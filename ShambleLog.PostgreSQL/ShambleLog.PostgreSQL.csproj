@@ -15,8 +15,8 @@
     <Compile Include="..\ShambleLog.Core\LogEntryWriter.cs" Link="Core\LogEntryWriter.cs" />
     <Compile Include="..\ShambleLog.Core\PurgeService.cs" Link="Core\PurgeService.cs" />
     <Compile Include="..\ShambleLog.Core\ShambleLogLoggerProvider.cs" Link="Core\ShambleLogLoggerProvider.cs" />
-    <Compile Include="..\ShambleLog.Core\ShambleLogLoggingBuilderExtensions.cs" Link="Core\ShambleLogLoggingBuilderExtensions.cs" />
-    <Compile Include="..\ShambleLog.Core\ShambleLogRegistration.cs" Link="Core\ShambleLogRegistration.cs" />
+    <Compile Include="..\ShambleLog.Core\LoggingBuilderExtensions.cs" Link="Core\LoggingBuilderExtensions.cs" />
+    <Compile Include="..\ShambleLog.Core\Registration.cs" Link="Core\Registration.cs" />
   </ItemGroup>
 
   <ItemGroup>

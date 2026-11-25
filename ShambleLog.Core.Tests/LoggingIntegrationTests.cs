@@ -415,6 +415,51 @@ public sealed class LoggingIntegrationTests(TestContext testContext)
     }
 
     [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public void AddShambleLog_MixedOverloads_RegisterOnePurgeService(bool genericFirst)
+    {
+        var purgeOptions = new PurgeServiceOptions
+        {
+            DeleteAfter = TimeSpan.FromDays(7),
+            Interval = TimeSpan.FromHours(2)
+        };
+        using var host = new HostBuilder()
+            .ConfigureLogging(logging =>
+            {
+                if (genericFirst)
+                {
+                    logging.AddShambleLog<LoggingTestDbContext, LogEntry>(purgeOptions);
+                    logging.AddShambleLog<LoggingTestDbContext>();
+                }
+                else
+                {
+                    logging.AddShambleLog<LoggingTestDbContext>();
+                    logging.AddShambleLog<LoggingTestDbContext, LogEntry>(purgeOptions);
+                }
+            })
+            .ConfigureServices(services =>
+            {
+                services.AddSingleton(new WriteBehavior(false));
+                services.AddDbContext<LoggingTestDbContext>(options => options.UseInMemoryDatabase("mixed-overloads"));
+            })
+            .Build();
+        purgeOptions.DeleteAfter = TimeSpan.Zero;
+        purgeOptions.Interval = TimeSpan.FromSeconds(1);
+
+        var configured = host.Services.GetRequiredService<IOptions<PurgeServiceOptions>>().Value;
+        Assert.AreEqual(TimeSpan.FromDays(7), configured.DeleteAfter);
+        Assert.AreEqual(TimeSpan.FromHours(2), configured.Interval);
+        Assert.ContainsSingle(host.Services.GetServices<IHostedService>().OfType<PurgeService>());
+        Assert.ContainsSingle(host.Services.GetServices<IHostedService>().OfType<LogEntryWriter>());
+        using var scope = host.Services.CreateScope();
+        Assert.AreSame(scope.ServiceProvider.GetRequiredService<LoggingTestDbContext>(),
+            scope.ServiceProvider.GetRequiredService<ILoggingDbContext>());
+        Assert.AreSame(scope.ServiceProvider.GetRequiredService<LoggingTestDbContext>(),
+            scope.ServiceProvider.GetRequiredService<ILoggingDbContext<LogEntry>>());
+    }
+
+    [TestMethod]
     [Timeout(10000, CooperativeCancellation = true)]
     public async Task LogEntryWriter_ExecuteTask_TracksHostLifecycle()
     {

@@ -8,7 +8,7 @@ builder.Services.AddDbContext<AppDbContext>(options =>
 builder.Logging.AddShambleLog<AppDbContext>();
 ```
 
-The context must derive from `DbContext`, implement `ILoggingDbContext`, and expose `DbSet<LogEntry>` and `DbSet<CategoryLevel>` properties. The inherited `SaveChangesAsync` implements the interface. Configure the `Properties` dictionary for your database; for example, use a JSON value converter:
+Import `ShambleLog.Core` for the logging extensions, including when using the PostgreSQL project. The context must derive from `DbContext`, implement `ILoggingDbContext`, and expose `DbSet<LogEntry>` and `DbSet<CategoryLevel>` properties. The inherited `SaveChangesAsync` implements the interface. Configure the `Properties` dictionary for your database; for example, use a JSON value converter:
 
 ```csharp
 public sealed class AppDbContext(DbContextOptions<AppDbContext> options)

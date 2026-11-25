@@ -7,7 +7,7 @@ using ShambleLog.Core.Entities;
 
 namespace ShambleLog.Core;
 
-internal static class ShambleLogRegistration
+internal static class Registration
 {
     public static ILoggingBuilder Add<TContext, TLogEntry>(ILoggingBuilder builder, PurgeServiceOptions? purgeServiceOptions)
         where TContext : DbContext, ILoggingDbContext<TLogEntry>
