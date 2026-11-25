@@ -8,6 +8,15 @@ namespace ShambleLog.Core;
 
 public sealed class LogEntryWriter(LogEntryQueue queue, IServiceScopeFactory scopeFactory) : BackgroundService
 {
+    public override async Task StartAsync(CancellationToken cancellationToken)
+    {
+        await using var scope = scopeFactory.CreateAsyncScope();
+        var initializer = scope.ServiceProvider.GetService<ICategoryLevelInitializer>();
+        if (initializer is not null)
+            await initializer.InitializeAsync(cancellationToken);
+        await base.StartAsync(cancellationToken);
+    }
+
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         try
@@ -46,11 +55,15 @@ public sealed class LogEntryWriter(LogEntryQueue queue, IServiceScopeFactory sco
 internal interface ILogEntryStore
 {
     Task SaveAsync(LogEntry entry, CancellationToken cancellationToken);
+    Task<int> PurgeAsync(DateTime cutoff, CancellationToken cancellationToken);
 }
 
 internal sealed class LogEntryStore<TLogEntry>(ILoggingDbContext<TLogEntry> context) : ILogEntryStore
     where TLogEntry : LogEntry, new()
 {
+    public Task<int> PurgeAsync(DateTime cutoff, CancellationToken cancellationToken) =>
+        PurgeService.PurgeAsync(context, cutoff, cancellationToken);
+
     public async Task SaveAsync(LogEntry entry, CancellationToken cancellationToken)
     {
         var rules = await context.LogCategoryLevels.AsNoTracking().ToListAsync(cancellationToken);

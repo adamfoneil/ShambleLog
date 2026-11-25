@@ -2,6 +2,7 @@
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using ShambleLog.Core.Entities;
 
 namespace ShambleLog.Core;
 
@@ -32,11 +33,11 @@ public class PurgeService(
             try
             {
                 await using var scope = _scopeFactory.CreateAsyncScope();
-                var dbContext = scope.ServiceProvider.GetRequiredService<ILoggingDbContext>();
                 var cutoff = DateTime.UtcNow - _options.DeleteAfter;
-                var entriesToDelete = dbContext.LogEntries.Where(e => e.Timestamp < cutoff);
-                dbContext.LogEntries.RemoveRange(entriesToDelete);
-                int deletedCount = await dbContext.SaveChangesAsync(stoppingToken);
+                var store = scope.ServiceProvider.GetService<ILogEntryStore>();
+                int deletedCount = store is not null
+                    ? await store.PurgeAsync(cutoff, stoppingToken)
+                    : await PurgeAsync(scope.ServiceProvider.GetRequiredService<ILoggingDbContext>(), cutoff, stoppingToken);
 
                 if (_logger.IsEnabled(LogLevel.Information))
                 {
@@ -55,5 +56,14 @@ public class PurgeService(
 
             await Task.Delay(_options.Interval, stoppingToken);
         }
+    }
+
+    internal static async Task<int> PurgeAsync<TLogEntry>(
+        ILoggingDbContext<TLogEntry> context, DateTime cutoff, CancellationToken cancellationToken)
+        where TLogEntry : LogEntry
+    {
+        var entriesToDelete = context.LogEntries.Where(entry => entry.Timestamp < cutoff);
+        context.LogEntries.RemoveRange(entriesToDelete);
+        return await context.SaveChangesAsync(cancellationToken);
     }
 }

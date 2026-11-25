@@ -1,9 +1,11 @@
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using ShambleLog.Core.Entities;
 
 namespace ShambleLog.Core.Tests;
@@ -89,6 +91,138 @@ public sealed class LoggingIntegrationTests(TestContext testContext)
         var entries = await ReadEntriesAsync(host);
         CollectionAssert.AreEqual(new[] { "default accepted", "prefix accepted", "specific accepted" },
             entries.Select(entry => entry.Message).ToArray());
+    }
+
+    [TestMethod]
+    [Timeout(10000, CooperativeCancellation = true)]
+    public async Task AddShambleLog_ConfiguredLevels_SeedsMissingRulesAndDatabaseWinsConflicts()
+    {
+        var warnings = new CapturingLoggerProvider();
+        using var host = CreateConfiguredHost(new Dictionary<string, string?>
+        {
+            ["Logging:LogLevel:Default"] = "Warning",
+            ["Logging:LogLevel:Example"] = "Error",
+            ["Logging:LogLevel:New.Category"] = "None"
+        }, warnings, registerTwice: true);
+        await using (var scope = host.Services.CreateAsyncScope())
+        {
+            var context = scope.ServiceProvider.GetRequiredService<LoggingTestDbContext>();
+            context.LogCategoryLevels.Add(new CategoryLevel { Category = "example", Level = LogLevel.Debug });
+            await context.SaveRulesAsync(testContext.CancellationToken);
+        }
+
+        await host.StartAsync(testContext.CancellationToken);
+        var factory = host.Services.GetRequiredService<ILoggerFactory>();
+        factory.CreateLogger("Example.Child").LogDebug("database permits debug");
+        factory.CreateLogger("Other").LogInformation("default rejects information");
+        factory.CreateLogger("Other").LogWarning("default permits warning");
+        factory.CreateLogger("New.Category").LogCritical("disabled");
+        await host.StopAsync(testContext.CancellationToken);
+
+        await using var readScope = host.Services.CreateAsyncScope();
+        var rules = await readScope.ServiceProvider.GetRequiredService<LoggingTestDbContext>()
+            .LogCategoryLevels.AsNoTracking().ToListAsync(testContext.CancellationToken);
+        Assert.HasCount(3, rules);
+        Assert.AreEqual(LogLevel.Debug, rules.Single(rule => rule.Category == "example").Level);
+        Assert.AreEqual(LogLevel.Warning, rules.Single(rule => rule.Category == "Default").Level);
+        Assert.AreEqual(LogLevel.None, rules.Single(rule => rule.Category == "New.Category").Level);
+        var messages = (await ReadEntriesAsync(host)).Select(entry => entry.Message).ToArray();
+        CollectionAssert.Contains(messages, "database permits debug");
+        CollectionAssert.Contains(messages, "default permits warning");
+        CollectionAssert.DoesNotContain(messages, "default rejects information");
+        CollectionAssert.DoesNotContain(messages, "disabled");
+        var warning = Assert.ContainsSingle(warnings.Messages.Where(message => message.Contains("takes precedence")));
+        StringAssert.Contains(warning, "Example");
+        StringAssert.Contains(warning, "Error");
+        StringAssert.Contains(warning, "Debug");
+    }
+
+    [TestMethod]
+    [Timeout(10000, CooperativeCancellation = true)]
+    public async Task AddShambleLog_ExistingMatchingRule_DoesNotWarn()
+    {
+        var warnings = new CapturingLoggerProvider();
+        using var host = CreateConfiguredHost(new Dictionary<string, string?>
+        {
+            ["Logging:LogLevel:Example"] = "Warning"
+        }, warnings);
+        await using (var scope = host.Services.CreateAsyncScope())
+        {
+            var context = scope.ServiceProvider.GetRequiredService<LoggingTestDbContext>();
+            context.LogCategoryLevels.Add(new CategoryLevel { Category = "example", Level = LogLevel.Warning });
+            await context.SaveRulesAsync(testContext.CancellationToken);
+        }
+        await host.StartAsync(testContext.CancellationToken);
+        await host.StopAsync(testContext.CancellationToken);
+
+        await using var readScope = host.Services.CreateAsyncScope();
+        var rule = await readScope.ServiceProvider.GetRequiredService<LoggingTestDbContext>()
+            .LogCategoryLevels.SingleAsync(testContext.CancellationToken);
+        Assert.AreEqual("example", rule.Category);
+        Assert.AreEqual(LogLevel.Warning, rule.Level);
+        Assert.IsFalse(warnings.Messages.Any(message => message.Contains("takes precedence")));
+    }
+
+    [TestMethod]
+    [Timeout(10000, CooperativeCancellation = true)]
+    public async Task AddShambleLog_QueuedBeforeStart_UsesInitializedRules()
+    {
+        using var host = CreateConfiguredHost(new Dictionary<string, string?>
+        {
+            ["Logging:LogLevel:Default"] = "Error"
+        }, new CapturingLoggerProvider());
+        host.Services.GetRequiredService<ILoggerFactory>().CreateLogger("BeforeStart").LogWarning("filtered before start");
+        await host.StartAsync(testContext.CancellationToken);
+        host.Services.GetRequiredService<ILoggerFactory>().CreateLogger("BeforeStart").LogError("accepted after start");
+        await host.StopAsync(testContext.CancellationToken);
+
+        var entry = Assert.ContainsSingle(await ReadEntriesAsync(host));
+        Assert.AreEqual("accepted after start", entry.Message);
+    }
+
+    [TestMethod]
+    [Timeout(10000, CooperativeCancellation = true)]
+    public async Task AddShambleLog_InvalidConfiguredLevel_FailsStartup()
+    {
+        using var host = CreateConfiguredHost(new Dictionary<string, string?>
+        {
+            ["Logging:LogLevel:Default"] = "NotALevel"
+        }, new CapturingLoggerProvider(), applyLoggingConfiguration: false);
+
+        var exception = await Assert.ThrowsExactlyAsync<InvalidOperationException>(
+            () => host.StartAsync(testContext.CancellationToken));
+        StringAssert.Contains(exception.Message, "Logging:LogLevel:Default");
+    }
+
+    [TestMethod]
+    [Timeout(10000, CooperativeCancellation = true)]
+    public async Task AddShambleLog_CustomEntry_SeedsConfiguredLevels()
+    {
+        var root = new InMemoryDatabaseRoot();
+        using var host = new HostBuilder()
+            .ConfigureAppConfiguration(configuration => configuration.AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Logging:LogLevel:Default"] = "Error"
+            }))
+            .ConfigureLogging((context, logging) =>
+            {
+                logging.ClearProviders();
+                logging.AddConfiguration(context.Configuration.GetSection("Logging"));
+                logging.AddShambleLog<CustomLoggingDbContext, CustomLogEntry>();
+            })
+            .ConfigureServices(services => services.AddDbContext<CustomLoggingDbContext>(options =>
+                options.UseInMemoryDatabase("custom-config", root)))
+            .Build();
+        await host.StartAsync(testContext.CancellationToken);
+        var logger = host.Services.GetRequiredService<ILogger<LoggingIntegrationTests>>();
+        logger.LogWarning("filtered");
+        logger.LogError("accepted");
+        await host.StopAsync(testContext.CancellationToken);
+
+        await using var scope = host.Services.CreateAsyncScope();
+        var context = scope.ServiceProvider.GetRequiredService<CustomLoggingDbContext>();
+        Assert.AreEqual(LogLevel.Error, (await context.LogCategoryLevels.SingleAsync(testContext.CancellationToken)).Level);
+        Assert.AreEqual("accepted", Assert.ContainsSingle(await context.LogEntries.ToListAsync(testContext.CancellationToken)).Message);
     }
 
     [TestMethod]
@@ -235,6 +369,53 @@ public sealed class LoggingIntegrationTests(TestContext testContext)
 
     [TestMethod]
     [Timeout(10000, CooperativeCancellation = true)]
+    public async Task AddShambleLog_CustomEntry_WithPurgeOptions_RemovesExpiredEntries()
+    {
+        var options = new PurgeServiceOptions { DeleteAfter = TimeSpan.FromDays(1), Interval = TimeSpan.FromHours(2) };
+        using var host = CreateCustomHost(options, registerTwice: true);
+        options.DeleteAfter = TimeSpan.Zero;
+        options.Interval = TimeSpan.FromSeconds(1);
+
+        var configured = host.Services.GetRequiredService<IOptions<PurgeServiceOptions>>().Value;
+        Assert.AreEqual(TimeSpan.FromDays(1), configured.DeleteAfter);
+        Assert.AreEqual(TimeSpan.FromHours(2), configured.Interval);
+        Assert.ContainsSingle(host.Services.GetServices<IHostedService>().OfType<PurgeService>());
+
+        await using (var scope = host.Services.CreateAsyncScope())
+        {
+            var context = scope.ServiceProvider.GetRequiredService<CustomLoggingDbContext>();
+            context.LogEntries.Add(new CustomLogEntry { Timestamp = DateTime.UtcNow.AddDays(-2), Message = "expired" });
+            context.LogEntries.Add(new CustomLogEntry { Timestamp = DateTime.UtcNow, Message = "retained" });
+            await context.SaveChangesAsync(testContext.CancellationToken);
+        }
+
+        await host.StartAsync(testContext.CancellationToken);
+        var deadline = DateTime.UtcNow.AddSeconds(5);
+        List<CustomLogEntry> entries;
+        do
+        {
+            await using var scope = host.Services.CreateAsyncScope();
+            entries = await scope.ServiceProvider.GetRequiredService<CustomLoggingDbContext>()
+                .LogEntries.AsNoTracking().ToListAsync(testContext.CancellationToken);
+            if (entries.All(entry => entry.Message != "expired"))
+                break;
+            await Task.Delay(10, testContext.CancellationToken);
+        } while (DateTime.UtcNow < deadline);
+
+        await host.StopAsync(testContext.CancellationToken);
+        Assert.IsFalse(entries.Any(entry => entry.Message == "expired"));
+        Assert.AreEqual(1, entries.Count(entry => entry.Message == "retained"));
+    }
+
+    [TestMethod]
+    public void AddShambleLog_CustomEntry_WithoutPurgeOptions_DoesNotRegisterPurgeService()
+    {
+        using var host = CreateCustomHost();
+        Assert.IsEmpty(host.Services.GetServices<IHostedService>().OfType<PurgeService>());
+    }
+
+    [TestMethod]
+    [Timeout(10000, CooperativeCancellation = true)]
     public async Task LogEntryWriter_ExecuteTask_TracksHostLifecycle()
     {
         using var host = CreateHost();
@@ -337,7 +518,49 @@ public sealed class LoggingIntegrationTests(TestContext testContext)
             .LogEntries.AsNoTracking().ToListAsync(testContext.CancellationToken));
     }
 
-    private static IHost CreateCustomHost()
+    private static IHost CreateConfiguredHost(Dictionary<string, string?> values, CapturingLoggerProvider warnings,
+        bool registerTwice = false, bool applyLoggingConfiguration = true)
+    {
+        var databaseRoot = new InMemoryDatabaseRoot();
+        return new HostBuilder()
+            .ConfigureAppConfiguration(configuration => configuration.AddInMemoryCollection(values))
+            .ConfigureLogging((context, logging) =>
+            {
+                logging.ClearProviders();
+                if (applyLoggingConfiguration)
+                    logging.AddConfiguration(context.Configuration.GetSection("Logging"));
+                logging.AddProvider(warnings);
+                logging.AddShambleLog<LoggingTestDbContext>();
+                if (registerTwice)
+                    logging.AddShambleLog<LoggingTestDbContext>();
+            })
+            .ConfigureServices(services =>
+            {
+                services.AddSingleton(new WriteBehavior(false));
+                services.AddDbContext<LoggingTestDbContext>(options => options.UseInMemoryDatabase("configured-logs", databaseRoot));
+            })
+            .Build();
+    }
+
+    private sealed class CapturingLoggerProvider : ILoggerProvider
+    {
+        public System.Collections.Concurrent.ConcurrentQueue<string> Messages { get; } = new();
+        public ILogger CreateLogger(string categoryName) => new CapturingLogger(Messages);
+        public void Dispose() { }
+
+        private sealed class CapturingLogger(System.Collections.Concurrent.ConcurrentQueue<string> messages) : ILogger
+        {
+            public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+            public bool IsEnabled(LogLevel logLevel) => logLevel == LogLevel.Warning;
+            public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
+            {
+                if (IsEnabled(logLevel))
+                    messages.Enqueue(formatter(state, exception));
+            }
+        }
+    }
+
+    private static IHost CreateCustomHost(PurgeServiceOptions? purgeServiceOptions = null, bool registerTwice = false)
     {
         var databaseRoot = new InMemoryDatabaseRoot();
         return new HostBuilder()
@@ -345,7 +568,12 @@ public sealed class LoggingIntegrationTests(TestContext testContext)
             {
                 logging.ClearProviders();
                 logging.SetMinimumLevel(LogLevel.Warning);
-                logging.AddShambleLog<CustomLoggingDbContext, CustomLogEntry>();
+                if (purgeServiceOptions is null)
+                    logging.AddShambleLog<CustomLoggingDbContext, CustomLogEntry>();
+                else
+                    logging.AddShambleLog<CustomLoggingDbContext, CustomLogEntry>(purgeServiceOptions);
+                if (registerTwice)
+                    logging.AddShambleLog<CustomLoggingDbContext, CustomLogEntry>(purgeServiceOptions);
             })
             .ConfigureServices(services =>
             {
