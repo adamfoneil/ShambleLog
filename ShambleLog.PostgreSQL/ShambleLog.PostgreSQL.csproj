@@ -1,0 +1,26 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net11.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="..\ShambleLog.Core\Entities\CategoryLevel.cs" Link="Core\Entities\CategoryLevel.cs" />
+    <Compile Include="..\ShambleLog.Core\Entities\LogEntry.cs" Link="Core\Entities\LogEntry.cs" />
+    <Compile Include="..\ShambleLog.Core\ILoggingDbContext.cs" Link="Core\ILoggingDbContext.cs" />
+    <Compile Include="..\ShambleLog.Core\LogEntryQueue.cs" Link="Core\LogEntryQueue.cs" />
+    <Compile Include="..\ShambleLog.Core\LogEntryWriter.cs" Link="Core\LogEntryWriter.cs" />
+    <Compile Include="..\ShambleLog.Core\ShambleLogLoggerProvider.cs" Link="Core\ShambleLogLoggerProvider.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Folder Include="Core\Entities\" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.EntityFrameworkCore" Version="11.0.0" />
+  </ItemGroup>
+
+</Project>

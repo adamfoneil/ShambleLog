@@ -1,17 +1,13 @@
-using System.Globalization;
 using Microsoft.Extensions.Logging;
+using ShambleLog.Core.Entities;
+using System.Globalization;
 
 namespace ShambleLog.Core;
 
-public sealed class ShambleLogLoggerProvider : ILoggerProvider, ISupportExternalScope
+public sealed class ShambleLogLoggerProvider(LogEntryQueue queue) : ILoggerProvider, ISupportExternalScope
 {
-    private readonly LogEntryQueue _queue;
+    private readonly LogEntryQueue _queue = queue;
     private IExternalScopeProvider _scopeProvider = new LoggerExternalScopeProvider();
-
-    public ShambleLogLoggerProvider(LogEntryQueue queue)
-    {
-        _queue = queue;
-    }
 
     public ILogger CreateLogger(string categoryName) => new ShambleLogLogger(categoryName, _queue, () => _scopeProvider);
 
@@ -36,7 +32,7 @@ public sealed class ShambleLogLoggerProvider : ILoggerProvider, ISupportExternal
             {
                 Timestamp = DateTime.UtcNow,
                 Level = logLevel,
-                SourceContext = categoryName,
+                Category = categoryName,
                 Message = formatter(state, exception),
                 Exception = exception?.ToString()
             };

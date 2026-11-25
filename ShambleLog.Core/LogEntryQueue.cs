@@ -1,3 +1,4 @@
+using ShambleLog.Core.Entities;
 using System.Threading.Channels;
 
 namespace ShambleLog.Core;
