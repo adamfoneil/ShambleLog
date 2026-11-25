@@ -194,6 +194,43 @@ public sealed class LoggingIntegrationTests(TestContext testContext)
 
         var writer = host.Services.GetRequiredService<LogEntryWriter>();
         Assert.AreSame(writer, Assert.ContainsSingle(host.Services.GetServices<IHostedService>().OfType<LogEntryWriter>()));
+        Assert.IsEmpty(host.Services.GetServices<IHostedService>().OfType<PurgeService>());
+    }
+
+    [TestMethod]
+    [Timeout(10000, CooperativeCancellation = true)]
+    public async Task AddShambleLog_WithPurgeOptions_RemovesExpiredEntries()
+    {
+        using var host = CreateHost(purgeServiceOptions: new PurgeServiceOptions
+        {
+            DeleteAfter = TimeSpan.FromDays(1),
+            Interval = TimeSpan.FromHours(1)
+        });
+
+        await using (var scope = host.Services.CreateAsyncScope())
+        {
+            var context = scope.ServiceProvider.GetRequiredService<LoggingTestDbContext>();
+            context.LogEntries.Add(new LogEntry { Timestamp = DateTime.UtcNow.AddDays(-2), Message = "expired" });
+            context.LogEntries.Add(new LogEntry { Timestamp = DateTime.UtcNow, Message = "retained" });
+            await context.SaveChangesAsync(testContext.CancellationToken);
+        }
+
+        await host.StartAsync(testContext.CancellationToken);
+        var deadline = DateTime.UtcNow.AddSeconds(5);
+        List<LogEntry> entries;
+        do
+        {
+            entries = await ReadEntriesAsync(host);
+            if (entries.All(entry => entry.Message != "expired"))
+                break;
+            await Task.Delay(10, testContext.CancellationToken);
+        } while (DateTime.UtcNow < deadline);
+
+        await host.StopAsync(testContext.CancellationToken);
+        entries = await ReadEntriesAsync(host);
+
+        Assert.IsFalse(entries.Any(entry => entry.Message == "expired"));
+        Assert.AreEqual(1, entries.Count(entry => entry.Message == "retained"));
     }
 
     [TestMethod]
@@ -320,7 +357,10 @@ public sealed class LoggingIntegrationTests(TestContext testContext)
             .Build();
     }
 
-    private static IHost CreateHost(bool failWrites = false, bool registerTwice = false)
+    private static IHost CreateHost(
+        bool failWrites = false,
+        bool registerTwice = false,
+        PurgeServiceOptions? purgeServiceOptions = null)
     {
         var databaseRoot = new InMemoryDatabaseRoot();
         return new HostBuilder()
@@ -328,9 +368,9 @@ public sealed class LoggingIntegrationTests(TestContext testContext)
             {
                 logging.ClearProviders();
                 logging.SetMinimumLevel(LogLevel.Warning);
-                logging.AddShambleLog<LoggingTestDbContext>();
+                logging.AddShambleLog<LoggingTestDbContext>(purgeServiceOptions);
                 if (registerTwice)
-                    logging.AddShambleLog<LoggingTestDbContext>();
+                    logging.AddShambleLog<LoggingTestDbContext>(purgeServiceOptions);
             })
             .ConfigureServices(services =>
             {

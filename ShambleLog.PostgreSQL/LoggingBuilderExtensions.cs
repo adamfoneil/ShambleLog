@@ -9,11 +9,26 @@ namespace ShambleLog.PostgreSQL;
 
 public static class LoggingBuilderExtensions
 {
-    public static ILoggingBuilder AddShambleLog<TContext>(this ILoggingBuilder builder)
+    public static ILoggingBuilder AddShambleLog<TContext>(
+        this ILoggingBuilder builder,
+        PurgeServiceOptions? purgeServiceOptions = null)
         where TContext : DbContext, ILoggingDbContext
     {
         ArgumentNullException.ThrowIfNull(builder);
         builder.Services.TryAddScoped<ILoggingDbContext>(services => services.GetRequiredService<TContext>());
+
+        if (purgeServiceOptions is not null)
+        {
+            var deleteAfter = purgeServiceOptions.DeleteAfter;
+            var interval = purgeServiceOptions.Interval;
+            builder.Services.Configure<PurgeServiceOptions>(options =>
+            {
+                options.DeleteAfter = deleteAfter;
+                options.Interval = interval;
+            });
+            builder.Services.AddHostedService<PurgeService>();
+        }
+
         return builder.AddShambleLog<TContext, LogEntry>();
     }
 
