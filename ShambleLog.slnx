@@ -1,3 +1,4 @@
 <Solution>
+  <Project Path="ShambleLog.Core.Tests/ShambleLog.Core.Tests.csproj" />
   <Project Path="ShambleLog.Core/ShambleLog.Core.csproj" />
 </Solution>
