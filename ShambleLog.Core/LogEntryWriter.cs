@@ -54,22 +54,27 @@ internal sealed class LogEntryStore<TLogEntry>(ILoggingDbContext<TLogEntry> cont
     public async Task SaveAsync(LogEntry entry, CancellationToken cancellationToken)
     {
         var rules = await context.LogCategoryLevels.AsNoTracking().ToListAsync(cancellationToken);
-        var rule = rules
-            .Where(item => !string.Equals(item.Category, "Default", StringComparison.OrdinalIgnoreCase)
-                && entry.Category.StartsWith(item.Category, StringComparison.OrdinalIgnoreCase))
-            .OrderByDescending(item => item.Category.Length)
-            .ThenBy(item => item.Category, StringComparer.Ordinal)
-            .FirstOrDefault()
-            ?? rules.Where(item => string.Equals(item.Category, "Default", StringComparison.OrdinalIgnoreCase))
-                .OrderBy(item => item.Category, StringComparer.Ordinal)
-                .FirstOrDefault();
-
-        if (rule is not null && (rule.Level == LogLevel.None || entry.Level < rule.Level))
+        var minimumLevel = FindMinimumLevel(rules, entry.Category);
+        if (minimumLevel is not null && (minimumLevel == LogLevel.None || entry.Level < minimumLevel))
             return;
 
         var persistedEntry = new TLogEntry { Timestamp = entry.Timestamp };
         persistedEntry.SetProperties(entry.Category, entry.Level, entry.Template, entry.Message, entry.Exception, entry.Properties);
         context.LogEntries.Add(persistedEntry);
         await context.SaveChangesAsync(cancellationToken);
+    }
+
+    private static LogLevel? FindMinimumLevel(IEnumerable<CategoryLevel> rules, string category)
+    {
+        var rule = rules
+            .Where(item => !string.Equals(item.Category, "Default", StringComparison.OrdinalIgnoreCase)
+                && category.StartsWith(item.Category, StringComparison.OrdinalIgnoreCase))
+            .OrderByDescending(item => item.Category.Length)
+            .ThenBy(item => item.Category, StringComparer.Ordinal)
+            .FirstOrDefault()
+            ?? rules.Where(item => string.Equals(item.Category, "Default", StringComparison.OrdinalIgnoreCase))
+                .OrderBy(item => item.Category, StringComparer.Ordinal)
+                .FirstOrDefault();
+        return rule?.Level;
     }
 }
