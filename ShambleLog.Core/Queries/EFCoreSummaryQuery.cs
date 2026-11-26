@@ -31,11 +31,11 @@ public class EFCoreSummaryQuery(ILoggingDbContext loggingDbContext)
                      join log in logs on command.LogEntryId equals log.Id
                      select new { Command = command, Log = log };
         var rows = await joined.ToArrayAsync(cancellationToken);
-        return BuildMetrics(rows.Select(row =>
+        return [.. BuildMetrics(rows.Select(row =>
         {
             row.Command.LogEntry = row.Log;
             return row.Command;
-        })).ToArray();
+        }))];
     }
 
     internal static List<Result> BuildMetrics(IEnumerable<EFCoreEntry> rows) =>
