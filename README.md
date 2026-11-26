@@ -80,6 +80,8 @@ A single hosted worker saves entries in order using a new DI scope per entry. Lo
 
 The hosted `LogEntryWriter` is also available as a singleton from dependency injection. Its inherited `ExecuteTask` is null before the host starts, runs while the writer is active, and completes or faults when the writer stops. For example, resolve it with `host.Services.GetRequiredService<LogEntryWriter>()` and inspect `ExecuteTask`. A running task does not guarantee database connectivity or that the queue is keeping up. Let the host manage the writer's lifecycle.
 
+`LogEntryWriter.IngestionRate` reports successfully persisted log entries per second, averaged over that writer's lifetime. Timing includes the category gate, middleware, database save, and scope cleanup for persisted entries, but excludes time waiting for queued entries and processing entries that are filtered, skipped by middleware, or fail before saving. The thread-safe value is zero until the first successful save and updates after each persisted entry; it retains its last value while idle or stopped. It is an in-memory metric, not stored in the database, and can be read from the singleton for a future UI.
+
 To enable periodic deletion of old entries, configure `WithRetentionPeriod`:
 
 ```csharp

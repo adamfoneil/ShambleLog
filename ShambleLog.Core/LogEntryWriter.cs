@@ -3,11 +3,16 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using ShambleLog.Core.Entities;
+using System.Diagnostics;
 
 namespace ShambleLog.Core;
 
 public sealed class LogEntryWriter(LogEntryQueue queue, IServiceScopeFactory scopeFactory) : BackgroundService
 {
+    private double _ingestionRate;
+
+    public double IngestionRate => Volatile.Read(ref _ingestionRate);
+
     public override async Task StartAsync(CancellationToken cancellationToken)
     {
         await using var scope = scopeFactory.CreateAsyncScope();
@@ -19,10 +24,14 @@ public sealed class LogEntryWriter(LogEntryQueue queue, IServiceScopeFactory sco
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        long writtenCount = 0;
+        double activeSeconds = 0;
         try
         {
             await foreach (var entry in queue.Reader.ReadAllAsync(stoppingToken))
             {
+                var started = Stopwatch.GetTimestamp();
+                LogEntryContext? context = null;
                 queue.SuppressLogging = true;
                 try
                 {
@@ -32,11 +41,18 @@ public sealed class LogEntryWriter(LogEntryQueue queue, IServiceScopeFactory sco
                         continue;
 
                     var pipeline = scope.ServiceProvider.GetRequiredService<LogEntryPipeline>();
-                    await pipeline.Invoke(new LogEntryContext(entry, scope.ServiceProvider, stoppingToken));
+                    context = new LogEntryContext(entry, scope.ServiceProvider, stoppingToken);
+                    await pipeline.Invoke(context);
                 }
                 finally
                 {
                     queue.SuppressLogging = false;
+                    if (context?.IsPersisted == true)
+                    {
+                        writtenCount++;
+                        activeSeconds += Stopwatch.GetElapsedTime(started).TotalSeconds;
+                        Volatile.Write(ref _ingestionRate, activeSeconds > 0 ? writtenCount / activeSeconds : 0);
+                    }
                 }
             }
         }
