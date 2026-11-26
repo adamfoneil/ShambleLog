@@ -180,13 +180,13 @@ public abstract class LogQuery(ILoggingDbContext loggingDbContext)
         using var document = JsonDocument.Parse(expression);
         if (document.RootElement.ValueKind != JsonValueKind.Object)
             throw new FormatException("Properties must be a JSON object.");
-        return document.RootElement.EnumerateObject().Select(property =>
+        return [.. document.RootElement.EnumerateObject().Select(property =>
         {
             var value = property.Value;
             var text = value.ValueKind == JsonValueKind.String ? value.GetString() : null;
             var exclude = text?.StartsWith('-') == true;
             return (property.Name, exclude ? JsonSerializer.SerializeToElement(text![1..]) : value.Clone(), exclude);
-        }).ToArray();
+        })];
     }
 
     /// <summary>
