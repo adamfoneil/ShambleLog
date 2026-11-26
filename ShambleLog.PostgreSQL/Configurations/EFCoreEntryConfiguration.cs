@@ -11,7 +11,7 @@ public sealed class EFCoreEntryConfiguration : IEntityTypeConfiguration<EFCoreEn
         builder.ToTable("EFCoreEntries", "logging");
         builder.HasKey(entry => entry.LogEntryId);
         builder.HasOne(entry => entry.LogEntry)
-            .WithOne()
+            .WithOne(entry => entry.EFCoreEntry)
             .HasForeignKey<EFCoreEntry>(entry => entry.LogEntryId)
             .OnDelete(DeleteBehavior.Cascade);
     }
