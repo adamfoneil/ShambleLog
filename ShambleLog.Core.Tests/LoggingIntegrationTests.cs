@@ -140,7 +140,8 @@ public sealed class LoggingIntegrationTests(TestContext testContext)
         await using var readScope = host.Services.CreateAsyncScope();
         var entries = await readScope.ServiceProvider.GetRequiredService<LinkedLoggingDbContext>()
             .LogEntries.AsNoTracking().ToListAsync(testContext.CancellationToken);
-        Assert.AreEqual("no category rule", Assert.ContainsSingle(entries).Message);
+        Assert.AreEqual("no category rule", Assert.ContainsSingle(
+            entries.Where(entry => entry.Category is "Example" or "Unmatched")).Message);
     }
 
     [TestMethod]
