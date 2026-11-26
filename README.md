@@ -116,6 +116,16 @@ Configure the relationship in your model, for example `modelBuilder.Entity<EfCom
 
 Structured property values are snapshotted at log time as described above, so non-scalar values arrive as strings. EF Core does not expose every command detail through `ILogger`, and parameter values are only logged when sensitive data logging is enabled; avoid persisting sensitive data.
 
+### EF Core command middleware
+
+`UseEFCore()` records executed and failed EF Core commands (`CommandExecuted`/`CommandError` in the `Microsoft.EntityFrameworkCore.Database.Command` category) as `EFCoreEntry` rows: command text, parameters, elapsed milliseconds, `TagWith` tags, and referenced table names (a best-effort regex parse of the SQL). Implement `IEFCoreLoggingDbContext` on your logging context and map the entity; the PostgreSQL project's `EFCoreEntryConfiguration` uses `LogEntryId` as a one-to-one key with cascade delete. `TargetTables` and `Tags` are string arrays (`text[]` on PostgreSQL); other providers may need a value converter.
+
+```csharp
+builder.Logging.AddShambleLog<AppDbContext>(shamble => shamble.UseEFCore());
+```
+
+EF Core logs commands at `Information`, so the category must pass your logging filters and category-level rules. Commands issued by ShambleLog's own writer are not logged.
+
 ## Tests
 
 `ShambleLog.Core.Tests` contains MSTest integration tests using isolated EF Core in-memory databases. Run them in Visual Studio Test Explorer or with `dotnet test ShambleLog.slnx`. The suite covers structured log data, filtering, concurrent writes and shutdown draining, duplicate registration, log entry middleware, recursion prevention, and database failure propagation.

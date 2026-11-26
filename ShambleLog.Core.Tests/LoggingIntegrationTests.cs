@@ -7,6 +7,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using ShambleLog.Core.Entities;
+using ShambleLog.Core.Middleware;
 
 namespace ShambleLog.Core.Tests;
 
@@ -523,6 +524,35 @@ public sealed class LoggingIntegrationTests(TestContext testContext)
 
     [TestMethod]
     [Timeout(10000, CooperativeCancellation = true)]
+    public async Task Log_EFCoreMiddleware_PersistsExecutedCommandDetails()
+    {
+        const string template = "Executed DbCommand ({elapsed}ms) [Parameters=[{parameters}], CommandType='{commandType}', CommandTimeout='{commandTimeout}']{newLine}{commandText}";
+        const string sql = "-- GetOrders\n-- GetOrders\nSELECT o.\"Id\" FROM \"Orders\" AS o INNER JOIN \"Customers\" AS c ON o.\"CustomerId\" = c.\"Id\"";
+        using var host = CreateLinkedHost(shamble => shamble.UseEFCore());
+        await host.StartAsync(testContext.CancellationToken);
+        var efLogger = host.Services.GetRequiredService<ILoggerFactory>().CreateLogger(EFCoreMiddleware.Category);
+        efLogger.LogWarning(new EventId(20101, "CommandExecuted"), template, "1,234", "@p0='5'", "Text", 30, "\n", sql);
+        efLogger.LogWarning(new EventId(20100, "CommandExecuting"), "Executing DbCommand {commandText}", sql);
+        host.Services.GetRequiredService<ILoggerFactory>().CreateLogger("Other")
+            .LogWarning(new EventId(20101), template, "1", "", "Text", 30, "\n", sql);
+        await host.StopAsync(testContext.CancellationToken);
+
+        await using var scope = host.Services.CreateAsyncScope();
+        var context = scope.ServiceProvider.GetRequiredService<LinkedLoggingDbContext>();
+        Assert.HasCount(3, await context.LogEntries.ToListAsync(testContext.CancellationToken));
+        var command = Assert.ContainsSingle(await context.EFCoreEntries.Include(item => item.LogEntry)
+            .ToListAsync(testContext.CancellationToken));
+        Assert.AreEqual(EFCoreMiddleware.Category, command.LogEntry.Category);
+        Assert.AreEqual(20101, Property(command.LogEntry, "EventId").GetInt32());
+        Assert.AreEqual(1234, command.ElapsedMs);
+        Assert.AreEqual("@p0='5'", command.Parameters);
+        Assert.AreEqual(sql, command.CommandText);
+        CollectionAssert.AreEqual(new[] { "GetOrders" }, command.Tags);
+        CollectionAssert.AreEqual(new[] { "Orders", "Customers" }, command.TargetTables);
+    }
+
+    [TestMethod]
+    [Timeout(10000, CooperativeCancellation = true)]
     public async Task Log_CategoryMiddleware_PersistsLinkedEntityForMatchingCategory()
     {
         using var host = CreateLinkedHost(shamble => shamble
@@ -687,11 +717,12 @@ public sealed class LoggingIntegrationTests(TestContext testContext)
     }
 
     private sealed class LinkedLoggingDbContext(DbContextOptions<LinkedLoggingDbContext> options)
-        : DbContext(options), ILoggingDbContext
+        : DbContext(options), IEFCoreLoggingDbContext
     {
         public DbSet<LogEntry> LogEntries { get; set; } = null!;
         public DbSet<CategoryLevel> LogCategoryLevels { get; set; } = null!;
         public DbSet<LinkedLogDetail> Details { get; set; } = null!;
+        public DbSet<EFCoreEntry> EFCoreEntries { get; set; } = null!;
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -703,6 +734,13 @@ public sealed class LoggingIntegrationTests(TestContext testContext)
                 .WithMany()
                 .HasForeignKey(detail => detail.LogEntryId)
                 .OnDelete(DeleteBehavior.Cascade);
+            modelBuilder.Entity<EFCoreEntry>(entry =>
+            {
+                entry.HasKey(item => item.LogEntryId);
+                entry.HasOne(item => item.LogEntry).WithOne()
+                    .HasForeignKey<EFCoreEntry>(item => item.LogEntryId)
+                    .OnDelete(DeleteBehavior.Cascade);
+            });
         }
 
         private static string SerializeProperties(Dictionary<string, object?> properties) =>
