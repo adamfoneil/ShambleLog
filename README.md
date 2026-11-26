@@ -1,6 +1,12 @@
 # ShambleLog
 
-ShambleLog adds an `ILogger<T>` provider that writes log entries to an Entity Framework Core context in the background. The PostgreSQL project includes a context configured for the standard log tables:
+When I was working on my Blazor Template, I wanted to integrate a log provider with a really nice consume experience, since that is what I feel is missing in the Serilog ecosystem. Yes, you can use Seq or Graylog or something along those lines. But those don't have the experience I'm looking for, and they run as standalone apps. I wanted to integrate a log viewer as a Razor Class Library for truly seamless integration with consuming apps.
+
+The other motivation is that I don't really like Serilog's relational database integration. It is a bit too opinionated and not flexible in the ways I want it to be. I wanted a more native EF Core experience, with a DbContext and migrations, so that I can use the same database provider as my app and have a more natural integration with my existing data model.
+
+I made [Bramblelog](https://bramblelog.dev) as a cloud-native logging provider with the consume experience I was after, and to avoid having to configure log storage locally. But I felt that a cloud SaaS dependency was too heavy for a template, and a hard sell to begin with. So I made ShambleLog, a local logging provider that can be used with any .NET application.
+
+ShambleLog adds an `ILogger<T>` provider that writes log entries to an EF Core context in the background. The PostgreSQL project includes a context configured for the standard log tables:
 
 ```csharp
 using Microsoft.EntityFrameworkCore;
