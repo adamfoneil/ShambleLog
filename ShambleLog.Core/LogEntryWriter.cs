@@ -72,13 +72,16 @@ public sealed class LogEntryWriter(LogEntryQueue queue, IServiceScopeFactory sco
     }
 }
 
-internal sealed class CategoryLevelGate(ILoggingDbContext context)
+internal sealed class CategoryLevelGate(ILoggingDbContext context, SuppressedCategoryTracker suppressedCategories)
 {
     public async Task<bool> IsEnabledAsync(LogEntry entry, CancellationToken cancellationToken)
     {
         var rules = await context.LogCategoryLevels.AsNoTracking().ToListAsync(cancellationToken);
         var minimumLevel = FindMinimumLevel(rules, entry.Category);
-        return minimumLevel is null || (minimumLevel != LogLevel.None && entry.Level >= minimumLevel);
+        var isEnabled = minimumLevel is null || (minimumLevel != LogLevel.None && entry.Level >= minimumLevel);
+        if (!isEnabled)
+            suppressedCategories.Record(entry.Category, entry.Level);
+        return isEnabled;
     }
 
     private static LogLevel? FindMinimumLevel(IEnumerable<CategoryLevel> rules, string category)
