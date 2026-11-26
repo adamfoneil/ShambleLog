@@ -1,0 +1,13 @@
+@using Microsoft.Extensions.Logging
+@using ShambleLog.Core.Queries
+
+<div class="d-flex align-items-center">
+    <RadzenDatePicker @bind-Value="Criteria.Date" ShowTime="false" />
+    <RadzenTextBox @bind-Value="Criteria.TimeExpression" />
+    <RadzenDropDown @bind-Value="Criteria.Level" Data="Enum.GetValues<LogLevel>()" TValue="LogLevel?" />
+</div>
+
+@code {
+    [Parameter] public LogQuery.Criteria Criteria { get; set; } = new();
+    [Parameter] public LogQuery.EFCoreCriteria? EFCoreCriteria { get; set; }
+}

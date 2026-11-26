@@ -1,14 +1,12 @@
-@typeparam TDbContext where TDbContext : DbContext, ILoggingDbContext
 
-@using Microsoft.EntityFrameworkCore
-@using ShambleLog.Core
-@using ShambleLog.Core.Middleware
+@using ShambleLog.Core.Entities
+@using ShambleLog.Core.Queries
 
 <div class="log-viewer">
-    <div>
+    <section>
         <RadzenAccordion>
             <Items>
-                <RadzenAccordionItem Text="Categories">
+                <RadzenAccordionItem Text="Categories" Selected="true">
 
                 </RadzenAccordionItem>
                 <RadzenAccordionItem Text="EF Core" Visible="_efCoreEnabled">
@@ -16,21 +14,36 @@
                 </RadzenAccordionItem>
             </Items>
         </RadzenAccordion>
-    </div>
+    </section>
 
-    <div>
-        @*filter bar*@
+    <section>
+        <FilterBar Criteria="_criteria" EFCoreCriteria="_efCoreCriteria" />
         @*main table*@
-    </div>
+    </section>
 </div>
 
 @code {
     private bool _efCoreEnabled = false;
+    private LogQuery.Criteria _criteria = new();
+    private LogQuery.EFCoreCriteria? _efCoreCriteria;
+    private LogEntry[] _logEntries = [];
+    private CategorySummaryQuery.Result[] _categorySummaries = [];
+    private EFCoreSummaryQuery.Result[] _efCoreSummaries = [];
 
-    [Parameter, EditorRequired] public IDbContextFactory<TDbContext> DbFactory { get; set; }
+    [Parameter, EditorRequired] public LogQuery LogQuery { get; set; }
+    [Parameter, EditorRequired] public CategorySummaryQuery CategorySummaryQuery { get; set; }
+    [Parameter, EditorRequired] public EFCoreSummaryQuery EFCoreSummaryQuery { get; set; }
 
-    protected override void OnParametersSet()
+    protected override async Task OnInitializedAsync()
     {
-        _efCoreEnabled = typeof(IEFCoreLoggingDbContext).IsAssignableFrom(typeof(TDbContext));
+        await Refresh();
+    }
+
+
+    private async Task Refresh()
+    {
+        _categorySummaries = await CategorySummaryQuery.ExecuteAsync();
+        _logEntries = await LogQuery.ExecuteAsync(_criteria);
+        _efCoreSummaries = await EFCoreSummaryQuery.ExecuteAsync();
     }
 }
