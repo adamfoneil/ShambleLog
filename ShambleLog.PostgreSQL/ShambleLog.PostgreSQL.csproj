@@ -5,8 +5,8 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <GeneratePackageOnBuild>True</GeneratePackageOnBuild>
-    <PackageId>ShambleLog</PackageId>
-    <Title>ShambleLog</Title>
+    <PackageId>ShambleLog.PostgreSQL</PackageId>
+    <Title>ShambleLog.PostgreSQL</Title>
     <Version>0.9.1-alpha</Version>
     <Authors>Adam O'Neil</Authors>
     <Company>Adam O'Neil</Company>
@@ -29,10 +29,6 @@
   <ItemGroup>
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
     <PackageReference Include="Microsoft.EntityFrameworkCore" Version="11.0.0" />
-    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="11.0.0">
-      <PrivateAssets>all</PrivateAssets>
-      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
-    </PackageReference>
     <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="11.0.0" />
     <PackageReference Include="ShambleLog.Core" Version="0.9.1-alpha" />
   </ItemGroup>
