@@ -12,4 +12,6 @@ public class LogEntry
     public string Message { get; set; } = string.Empty;
     public string? Exception { get; set; }
     public Dictionary<string, object?> Properties { get; set; } = [];
+
+    public EFCoreEntry? EFCoreEntry { get; set; }
 }

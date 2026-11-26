@@ -2,4 +2,5 @@
   <Project Path="ShambleLog.Core.Tests/ShambleLog.Core.Tests.csproj" />
   <Project Path="ShambleLog.Core/ShambleLog.Core.csproj" />
   <Project Path="ShambleLog.PostgreSQL/ShambleLog.PostgreSQL.csproj" Id="a464086e-c0e4-442d-86c2-46bcf068b420" />
+  <Project Path="ShambleLog.RCL/ShambleLog.RCL.csproj" Id="508a7022-b452-42ef-8264-443ab9c67ab2" />
 </Solution>
