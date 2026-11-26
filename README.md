@@ -171,6 +171,10 @@ EF Core logs commands at `Information`, so the category must pass your logging f
 
 The `EFCoreCriteria` overload requires `IEFCoreLoggingDbContext`; it returns command rows with their log entries and supports exact table and tag matches, command text substring, and minimum elapsed milliseconds. Pass optional `Criteria` to filter their log entries as well.
 
+## Publishing ShambleLog.Core
+
+Add a NuGet.org API key authorized to push `ShambleLog.Core` as the repository Actions secret `NUGET_API_KEY`. Update the `Version` in `ShambleLog.Core\ShambleLog.Core.csproj` to an unpublished version and commit it. In GitHub Actions, manually run **Publish ShambleLog.Core** on the desired branch or tag. The workflow tests, packs, and publishes the version in that revision; publishing an existing version fails.
+
 ## Tests
 
 `ShambleLog.Core.Tests` contains MSTest integration tests using isolated EF Core in-memory databases. Run them in Visual Studio Test Explorer or with `dotnet test ShambleLog.slnx`. The suite covers structured log data, filtering, concurrent writes and shutdown draining, duplicate registration, log entry middleware, recursion prevention, and database failure propagation.

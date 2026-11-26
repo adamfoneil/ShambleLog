@@ -7,7 +7,7 @@
     <GeneratePackageOnBuild>True</GeneratePackageOnBuild>
     <PackageId>ShambleLog.Core</PackageId>
     <Title>ShambleLog.Core</Title>
-    <Version>0.9.0-alpha</Version>
+    <Version>0.9.1-alpha</Version>
     <Authors>Adam O'Neil</Authors>
     <Company>Adam O'Neil</Company>
     <Copyright>Copyright (c) 2026 Adam O'Neil</Copyright>
@@ -15,6 +15,8 @@
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <RepositoryUrl>https://github.com/adamfoneil/ShambleLog</RepositoryUrl>
     <PackageTags>logging</PackageTags>
+    <Description>Base classes and abstractions for a modern .NET logger provider</Description>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
   </PropertyGroup>
 
   <ItemGroup>
