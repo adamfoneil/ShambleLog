@@ -21,7 +21,8 @@ public class EFCoreSummaryQuery(ILoggingDbContext loggingDbContext)
         public DateTime LatestTimestamp { get; set; }
     }
     public async Task<Result[]> ExecuteAsync(string? timeExpression = null, CancellationToken cancellationToken = default)
-    {        
+    {
+        // query the EFCoreEntries table for all rows that match the time expression (if provided)
         throw new NotImplementedException();
     }
 
