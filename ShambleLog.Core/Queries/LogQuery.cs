@@ -28,7 +28,7 @@ public class LogQuery(ILoggingDbContext loggingDbContext)
         public string? MessageContains { get; set; }
         /// <summary>
         /// Parses to a dictionary that affects where clause against the JSONB properties column, e.g. {"UserId": "123"}.
-        /// Prefix a property value with "-" to exclude matching logs, e.g. "Method:-GetLogEntriesAfterIdAsync".
+        /// Prefix a string property value with "-" to exclude matching logs, e.g. {"Method": "-GetLogEntriesAfterIdAsync"}.
         /// This is where you'd search for a specific TraceId or RequestId, e.g. {"TraceId": "abc123"}.
         /// </summary>
         public string? PropertiesContain { get; set; }
@@ -49,9 +49,17 @@ public class LogQuery(ILoggingDbContext loggingDbContext)
     {
         ArgumentNullException.ThrowIfNull(criteria);
         var properties = ParseProperties(criteria.PropertiesContain);
-        var query = ApplyCriteria(_loggingDbContext.LogEntries.AsNoTracking().Include(entry => entry.EFCoreEntry), criteria);
+        IQueryable<LogEntry> query = _loggingDbContext.LogEntries.AsNoTracking();
+        if (_loggingDbContext is IEFCoreLoggingDbContext)
+            query = query.Include(entry => entry.EFCoreEntry);
+        query = FilterProperties(query, properties);
+        query = ApplyCriteria(query, criteria);
         var rows = await query.ToArrayAsync(cancellationToken);
+#if SHAMBLELOG_POSTGRESQL
+        return rows;
+#else
         return properties.Length == 0 ? rows : rows.Where(entry => MatchesProperties(entry, properties)).ToArray();
+#endif
     }
 
     public static IQueryable<LogEntry> ParseTimeExpression(IQueryable<LogEntry> query, string timeExpression)
@@ -63,7 +71,11 @@ public class LogQuery(ILoggingDbContext loggingDbContext)
         var ascending = expression.Equals("asc", StringComparison.OrdinalIgnoreCase) ||
             expression.EndsWith(":asc", StringComparison.OrdinalIgnoreCase);
         if (ascending)
+        {
             expression = expression.Equals("asc", StringComparison.OrdinalIgnoreCase) ? "" : expression[..^4];
+            if (expression.Length == 0 && !timeExpression.Trim().Equals("asc", StringComparison.OrdinalIgnoreCase))
+                throw new FormatException("Invalid time expression.");
+        }
 
         if (expression.Length > 0)
         {
@@ -112,7 +124,7 @@ public class LogQuery(ILoggingDbContext loggingDbContext)
         var efQueryDb = _loggingDbContext as IEFCoreLoggingDbContext ?? throw new NotSupportedException("EFCore query requires IEFCoreLoggingDbContext");
         ArgumentNullException.ThrowIfNull(efCoreCriteria);
         var properties = ParseProperties(criteria?.PropertiesContain);
-        IQueryable<LogEntry> logs = _loggingDbContext.LogEntries.AsNoTracking();
+        IQueryable<LogEntry> logs = FilterProperties(_loggingDbContext.LogEntries.AsNoTracking(), properties);
         if (criteria is not null)
             logs = ApplyCriteria(logs, criteria);
 
@@ -132,7 +144,10 @@ public class LogQuery(ILoggingDbContext loggingDbContext)
         var ascending = IsAscending(criteria?.TimeExpression);
         joined = ascending ? joined.OrderBy(row => row.Log.Timestamp) : joined.OrderByDescending(row => row.Log.Timestamp);
         var rows = await joined.ToArrayAsync(cancellationToken);
-        return rows.Where(row => MatchesProperties(row.Log, properties)).Select(row =>
+#if !SHAMBLELOG_POSTGRESQL
+        rows = rows.Where(row => MatchesProperties(row.Log, properties)).ToArray();
+#endif
+        return rows.Select(row =>
         {
             row.Command.LogEntry = row.Log;
             return row.Command;
@@ -179,11 +194,36 @@ public class LogQuery(ILoggingDbContext loggingDbContext)
         }).ToArray();
     }
 
+    private static IQueryable<LogEntry> FilterProperties(IQueryable<LogEntry> query, (string Key, JsonElement Value, bool Exclude)[] properties)
+    {
+#if SHAMBLELOG_POSTGRESQL
+        foreach (var property in properties)
+        {
+            var json = JsonSerializer.Serialize(new Dictionary<string, JsonElement> { [property.Key] = property.Value });
+            query = property.Exclude
+                ? query.Where(entry => !EF.Functions.JsonContains(entry.Properties, json))
+                : query.Where(entry => EF.Functions.JsonContains(entry.Properties, json));
+        }
+#endif
+        return query;
+    }
+
     private static bool MatchesProperties(LogEntry entry, (string Key, JsonElement Value, bool Exclude)[] properties) =>
         properties.All(property =>
         {
             var matches = entry.Properties.TryGetValue(property.Key, out var value) &&
-                JsonElement.DeepEquals(JsonSerializer.SerializeToElement(value), property.Value);
+                JsonContains(JsonSerializer.SerializeToElement(value), property.Value);
             return property.Exclude ? !matches : matches;
         });
+
+    private static bool JsonContains(JsonElement actual, JsonElement expected)
+    {
+        if (actual.ValueKind == JsonValueKind.Object && expected.ValueKind == JsonValueKind.Object)
+            return expected.EnumerateObject().All(property =>
+                actual.TryGetProperty(property.Name, out var value) && JsonContains(value, property.Value));
+        if (actual.ValueKind == JsonValueKind.Array && expected.ValueKind == JsonValueKind.Array)
+            return expected.EnumerateArray().All(item =>
+                actual.EnumerateArray().Any(value => JsonContains(value, item)));
+        return JsonElement.DeepEquals(actual, expected);
+    }
 }

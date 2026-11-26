@@ -161,6 +161,14 @@ builder.Logging.AddShambleLog<AppDbContext>(shamble => shamble.UseEFCore());
 
 EF Core logs commands at `Information`, so the category must pass your logging filters and category-level rules. Commands issued by ShambleLog's own writer are not logged.
 
+### Querying logs
+
+`LogQuery.ExecuteAsync` filters a selected UTC `Date`, with optional category and exact level, template and message substrings, and `PropertiesContain` JSON. Property values use JSON containment; prefix a string value with `-` to exclude matches (including entries where that property is absent). PostgreSQL applies these filters to the JSONB column. The provider-independent Core implementation filters properties after retrieving the other matches.
+
+`TimeExpression` is relative to the current UTC time and is combined with the selected date: use an integer with `s`, `m`, `h`, or `d` (for example `30m`), or a range from nearer to farther in the past (for example `1:2h`). Results are newest first by default; append `:asc`, or use `asc` alone, for oldest first. Invalid expressions throw `FormatException`.
+
+The `EFCoreCriteria` overload requires `IEFCoreLoggingDbContext`; it returns command rows with their log entries and supports exact table and tag matches, command text substring, and minimum elapsed milliseconds. Pass optional `Criteria` to filter their log entries as well.
+
 ## Tests
 
 `ShambleLog.Core.Tests` contains MSTest integration tests using isolated EF Core in-memory databases. Run them in Visual Studio Test Explorer or with `dotnet test ShambleLog.slnx`. The suite covers structured log data, filtering, concurrent writes and shutdown draining, duplicate registration, log entry middleware, recursion prevention, and database failure propagation.

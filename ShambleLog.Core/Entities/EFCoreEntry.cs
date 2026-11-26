@@ -1,10 +1,13 @@
-﻿namespace ShambleLog.Core.Entities;
+﻿using System.ComponentModel.DataAnnotations;
+
+namespace ShambleLog.Core.Entities;
 
 public class EFCoreEntry
 {
     /// <summary>
     /// Primary key and foreign key to <see cref="LogEntry.Id"/> (one-to-one)
     /// </summary>
+    [Key]
     public long LogEntryId { get; set; }
     public LogEntry LogEntry { get; set; } = null!;
     /// <summary>
