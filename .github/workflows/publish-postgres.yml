@@ -1,0 +1,37 @@
+name: Publish ShambleLog.PostgreSQL
+
+on:
+  workflow_dispatch:
+
+permissions:
+  id-token: write # required for NuGet trusted publishing (OIDC)
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 11.0.x
+
+      - name: Run tests
+        run: dotnet test ./ShambleLog.Core.Tests/ShambleLog.Core.Tests.csproj --configuration Release
+
+      - name: Pack ShambleLog.PostgreSQL
+        run: dotnet pack ./ShambleLog.PostgreSQL/ShambleLog.PostgreSQL.csproj --configuration Release --output ./artifacts
+
+      - name: NuGet login
+        id: login
+        uses: NuGet/login@v1
+        with:
+          user: ${{ secrets.NUGET_USER }}
+
+      - name: Publish to NuGet.org
+        env:
+          NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
+        run: dotnet nuget push './artifacts/*.nupkg' --api-key "${{ steps.login.outputs.NUGET_API_KEY }}" --source https://api.nuget.org/v3/index.json --skip-duplicate
