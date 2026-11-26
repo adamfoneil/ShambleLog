@@ -135,6 +135,51 @@ public sealed class LogQueryTests
     }
 
     [TestMethod]
+    public async Task CategorySummaryQuery_CountsCategoriesAndLevels()
+    {
+        await using var db = new BasicContext(new DbContextOptionsBuilder<BasicContext>()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString()).Options);
+        var query = new CategorySummaryQuery(db);
+        Assert.IsEmpty(await query.ExecuteAsync());
+
+        var now = DateTime.UtcNow;
+        db.LogEntries.AddRange(
+            Entry(1, now.AddMinutes(-10), "first"),
+            Entry(2, now.AddMinutes(-90), "second"),
+            Entry(3, now.AddMinutes(-150), "third"),
+            new LogEntry { Id = 4, Timestamp = now.AddMinutes(-10), Category = "Example", Level = LogLevel.Error },
+            new LogEntry { Id = 5, Timestamp = now.AddMinutes(-10), Category = "Other", Level = LogLevel.Warning },
+            new LogEntry { Id = 6, Timestamp = now.AddMinutes(10), Category = "Future", Level = LogLevel.Information });
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        var all = (await query.ExecuteAsync()).ToDictionary(result => result.Category);
+        Assert.AreEqual(3, all.Count);
+        Assert.AreEqual(3, all["Example"].LevelCounts[LogLevel.Warning]);
+        Assert.AreEqual(1, all["Example"].LevelCounts[LogLevel.Error]);
+        Assert.AreEqual(2, all["Example"].LevelCounts.Count);
+        Assert.AreEqual(1, all["Other"].LevelCounts[LogLevel.Warning]);
+        Assert.AreEqual(1, all["Future"].LevelCounts[LogLevel.Information]);
+        Assert.AreEqual(3, (await query.ExecuteAsync("asc")).Length);
+
+        var recent = (await query.ExecuteAsync("30m")).ToDictionary(result => result.Category);
+        Assert.AreEqual(2, recent.Count);
+        Assert.AreEqual(1, recent["Example"].LevelCounts[LogLevel.Warning]);
+        Assert.AreEqual(1, recent["Example"].LevelCounts[LogLevel.Error]);
+        Assert.AreEqual(1, recent["Other"].LevelCounts[LogLevel.Warning]);
+
+        var range = Assert.ContainsSingle(await query.ExecuteAsync("1:2h:asc"));
+        Assert.AreEqual("Example", range.Category);
+        Assert.AreEqual(1, range.LevelCounts[LogLevel.Warning]);
+        Assert.AreEqual(1, range.LevelCounts.Count);
+        await Assert.ThrowsExactlyAsync<FormatException>(() => query.ExecuteAsync("2:1h"));
+
+        using var cancellation = new CancellationTokenSource();
+        cancellation.Cancel();
+        await Assert.ThrowsAsync<OperationCanceledException>(() => query.ExecuteAsync(cancellationToken: cancellation.Token));
+    }
+
+    [TestMethod]
     public async Task PropertyFilterHook_AppliesServerAndClientFiltersToBothQueries()
     {
         await using var db = CreateContext();

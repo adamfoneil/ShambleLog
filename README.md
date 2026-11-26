@@ -169,6 +169,8 @@ EF Core logs commands at `Information`, so the category must pass your logging f
 
 `TimeExpression` is relative to the current UTC time and is combined with the selected date: use an integer with `s`, `m`, `h`, or `d` (for example `30m`), or a range from nearer to farther in the past (for example `1:2h`). Results are newest first by default; append `:asc`, or use `asc` alone, for oldest first. Invalid expressions throw `FormatException`.
 
+In `ShambleLog.Core`, `CategorySummaryQuery.ExecuteAsync` returns each category's counts by log level. Its optional time expression uses the same relative time syntax; without one, the summary includes all timestamps.
+
 The `EFCoreCriteria` overload requires `IEFCoreLoggingDbContext`; it returns command rows with their log entries and supports exact table and tag matches, command text substring, and minimum elapsed milliseconds. Pass optional `Criteria` to filter their log entries as well.
 
 ## Publishing ShambleLog.Core
