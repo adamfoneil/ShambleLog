@@ -2,6 +2,7 @@
 
   <PropertyGroup>
     <TargetFramework>net11.0</TargetFramework>
+    <DefineConstants>$(DefineConstants);SHAMBLELOG_POSTGRESQL</DefineConstants>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <GeneratePackageOnBuild>True</GeneratePackageOnBuild>
@@ -38,6 +39,7 @@
     <Compile Include="..\ShambleLog.Core\Middleware\EFCoreMiddleware.cs" Link="Core\Middleware\EFCoreMiddleware.cs" />
     <Compile Include="..\ShambleLog.Core\Middleware\EFCoreMiddlewareExtensions.cs" Link="Core\Middleware\EFCoreMiddlewareExtensions.cs" />
     <Compile Include="..\ShambleLog.Core\Middleware\IEFCoreLoggingDbContext.cs" Link="Core\Middleware\IEFCoreLoggingDbContext.cs" />
+    <Compile Include="..\ShambleLog.Core\Queries\LogQuery.cs" Link="Core\Queries\LogQuery.cs" />
   </ItemGroup>
 
   <ItemGroup>
