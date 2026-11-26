@@ -1,6 +1,30 @@
 # ShambleLog
 
-ShambleLog adds an `ILogger<T>` provider that writes log entries to an Entity Framework Core context in the background. Register your own database provider and context, then add the logger to a .NET generic host:
+ShambleLog adds an `ILogger<T>` provider that writes log entries to an Entity Framework Core context in the background. The PostgreSQL project includes a context configured for the standard log tables:
+
+```csharp
+using Microsoft.EntityFrameworkCore;
+using ShambleLog.Core;
+using ShambleLog.PostgreSQL;
+
+builder.Services.AddDbContext<ShambleLogDbContext>(options =>
+    options.UseNpgsql(builder.Configuration.GetConnectionString("ShambleLog")));
+builder.Logging.AddShambleLog<ShambleLogDbContext>();
+```
+
+The PostgreSQL context stores structured properties as `jsonb`. No migration is included yet: create and apply a migration for this context before starting the host.
+
+For EF Core tooling, install `dotnet-ef` matching the project's EF Core version (11.0.0). Pass exactly one connection string after `--`; EF forwards it to the design-time factory. This does not affect the application's runtime configuration. For example, from the solution directory in PowerShell:
+
+```powershell
+$connectionString = 'Host=localhost;Database=shamblelog;Username=postgres'
+dotnet ef migrations add InitialCreate --project ShambleLog.PostgreSQL --startup-project ShambleLog.PostgreSQL --context ShambleLogDbContext --output-dir Migrations -- $connectionString
+dotnet ef database update --project ShambleLog.PostgreSQL --startup-project ShambleLog.PostgreSQL --context ShambleLogDbContext -- $connectionString
+```
+
+Creating a migration does not require a live database; applying it requires a reachable database and sufficient permissions. Command-line arguments may be visible to other users or diagnostic tools, so avoid passing credentials in the connection string. Use an appropriate PostgreSQL authentication mechanism and keep secrets out of source control.
+
+Alternatively, register your own database provider and context, then add the logger to a .NET generic host:
 
 ```csharp
 builder.Services.AddDbContext<AppDbContext>(options =>
@@ -8,7 +32,7 @@ builder.Services.AddDbContext<AppDbContext>(options =>
 builder.Logging.AddShambleLog<AppDbContext>();
 ```
 
-Import `ShambleLog.Core` for the logging extensions, including when using the PostgreSQL project. The context must derive from `DbContext`, implement `ILoggingDbContext`, and expose `DbSet<LogEntry>` and `DbSet<CategoryLevel>` properties. The inherited `SaveChangesAsync` implements the interface. Configure the `Properties` dictionary for your database; for example, use a JSON value converter:
+Import `ShambleLog.Core` for the logging extensions, including when using the PostgreSQL project. A custom context must derive from `DbContext`, implement `ILoggingDbContext`, and expose `DbSet<LogEntry>` and `DbSet<CategoryLevel>` properties. The inherited `SaveChangesAsync` implements the interface. Configure the `Properties` dictionary for your database; for example, use a JSON value converter:
 
 ```csharp
 public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
