@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Diagnostics;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.Configuration;
@@ -477,6 +478,7 @@ public sealed class LoggingIntegrationTests(TestContext testContext)
         using var host = CreateHost();
         var writer = host.Services.GetRequiredService<LogEntryWriter>();
         Assert.IsNull(writer.ExecuteTask);
+        Assert.AreEqual(0, writer.IngestionRate);
 
         await host.StartAsync(testContext.CancellationToken);
         var execution = writer.ExecuteTask;
@@ -485,6 +487,90 @@ public sealed class LoggingIntegrationTests(TestContext testContext)
 
         await host.StopAsync(testContext.CancellationToken);
         Assert.IsTrue(execution.IsCompletedSuccessfully);
+        Assert.AreEqual(0, writer.IngestionRate);
+    }
+
+    [TestMethod]
+    [Timeout(10000, CooperativeCancellation = true)]
+    public async Task LogEntryWriter_IngestionRate_AveragesSuccessfulWritesAndExcludesIdleTime()
+    {
+        using var host = CreateLinkedHost(shamble => shamble.Use(async (context, next) =>
+        {
+            await Task.Delay(100, context.CancellationToken);
+            await next(context);
+        }));
+        await host.StartAsync(testContext.CancellationToken);
+        var writer = host.Services.GetRequiredService<LogEntryWriter>();
+        var logger = host.Services.GetRequiredService<ILogger<LoggingIntegrationTests>>();
+        var firstWrite = Stopwatch.StartNew();
+        logger.LogWarning("First entry");
+        while (writer.IngestionRate == 0)
+            await Task.Delay(10, testContext.CancellationToken);
+        firstWrite.Stop();
+
+        var firstRate = writer.IngestionRate;
+        Assert.IsGreaterThan(0, firstRate);
+        Assert.IsLessThanOrEqualTo(20, firstRate);
+        await Task.Delay(200, testContext.CancellationToken);
+        Assert.AreEqual(firstRate, writer.IngestionRate);
+
+        var secondWrite = Stopwatch.StartNew();
+        logger.LogWarning("Second entry");
+        await host.StopAsync(testContext.CancellationToken);
+        secondWrite.Stop();
+
+        var rate = writer.IngestionRate;
+        Assert.IsGreaterThanOrEqualTo(2 / (firstWrite.Elapsed + secondWrite.Elapsed).TotalSeconds, rate);
+        Assert.IsLessThanOrEqualTo(20, rate);
+        await using var scope = host.Services.CreateAsyncScope();
+        Assert.AreEqual(2, await scope.ServiceProvider.GetRequiredService<LinkedLoggingDbContext>()
+            .LogEntries.CountAsync(testContext.CancellationToken));
+    }
+
+    [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    [Timeout(10000, CooperativeCancellation = true)]
+    public async Task LogEntryWriter_IngestionRate_DoesNotCountSkippedOrFilteredEntries(bool filter)
+    {
+        using var host = CreateLinkedHost(shamble => shamble.Use((context, next) =>
+            filter ? next(context) : Task.CompletedTask));
+        if (filter)
+        {
+            await using var scope = host.Services.CreateAsyncScope();
+            var context = scope.ServiceProvider.GetRequiredService<LinkedLoggingDbContext>();
+            context.LogCategoryLevels.Add(new CategoryLevel { Category = "Default", Level = LogLevel.None });
+            await context.SaveChangesAsync(testContext.CancellationToken);
+        }
+        await host.StartAsync(testContext.CancellationToken);
+        host.Services.GetRequiredService<ILogger<LoggingIntegrationTests>>().LogWarning("Not saved");
+        await host.StopAsync(testContext.CancellationToken);
+
+        Assert.AreEqual(0, host.Services.GetRequiredService<LogEntryWriter>().IngestionRate);
+        await using var readScope = host.Services.CreateAsyncScope();
+        Assert.AreEqual(0, await readScope.ServiceProvider.GetRequiredService<LinkedLoggingDbContext>()
+            .LogEntries.CountAsync(testContext.CancellationToken));
+    }
+
+    [TestMethod]
+    [Timeout(10000, CooperativeCancellation = true)]
+    public async Task LogEntryWriter_IngestionRate_CountsSaveBeforeMiddlewareFailure()
+    {
+        using var host = CreateLinkedHost(shamble => shamble.Use(async (context, next) =>
+        {
+            await next(context);
+            throw new InvalidOperationException("Failed after saving");
+        }));
+        await host.StartAsync(testContext.CancellationToken);
+        host.Services.GetRequiredService<ILogger<LoggingIntegrationTests>>().LogWarning("Saved before failure");
+
+        await Assert.ThrowsExactlyAsync<InvalidOperationException>(
+            () => host.StopAsync(testContext.CancellationToken));
+
+        Assert.IsGreaterThan(0, host.Services.GetRequiredService<LogEntryWriter>().IngestionRate);
+        await using var scope = host.Services.CreateAsyncScope();
+        Assert.AreEqual(1, await scope.ServiceProvider.GetRequiredService<LinkedLoggingDbContext>()
+            .LogEntries.CountAsync(testContext.CancellationToken));
     }
 
     [TestMethod]
@@ -520,6 +606,7 @@ public sealed class LoggingIntegrationTests(TestContext testContext)
         Assert.IsTrue(execution.IsFaulted);
         Assert.AreSame(exception, execution.Exception?.InnerException);
         Assert.IsEmpty(await ReadEntriesAsync(host));
+        Assert.AreEqual(0, writer.IngestionRate);
     }
 
     [TestMethod]
@@ -589,6 +676,7 @@ public sealed class LoggingIntegrationTests(TestContext testContext)
 
         Assert.AreEqual("Middleware failed", exception.Message);
         Assert.IsTrue(writer.ExecuteTask!.IsFaulted);
+        Assert.AreEqual(0, writer.IngestionRate);
         await using var scope = host.Services.CreateAsyncScope();
         var context = scope.ServiceProvider.GetRequiredService<LinkedLoggingDbContext>();
         Assert.IsEmpty(await context.LogEntries.AsNoTracking().ToListAsync(testContext.CancellationToken));

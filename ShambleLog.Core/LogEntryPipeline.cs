@@ -17,6 +17,7 @@ public sealed class LogEntryContext(LogEntry entry, IServiceProvider services, C
     public LogEntry Entry { get; } = entry ?? throw new ArgumentNullException(nameof(entry));
     public IServiceProvider Services { get; } = services ?? throw new ArgumentNullException(nameof(services));
     public CancellationToken CancellationToken { get; } = cancellationToken;
+    internal bool IsPersisted { get; set; }
 }
 
 public sealed class ShambleLogBuilder
@@ -117,5 +118,6 @@ internal sealed class LogEntryPipeline(IEnumerable<LogEntryPipelineComponent> co
         var dbContext = context.Services.GetRequiredService<ILoggingDbContext>();
         dbContext.LogEntries.Add(context.Entry);
         await dbContext.SaveChangesAsync(context.CancellationToken);
+        context.IsPersisted = true;
     }
 }
