@@ -68,31 +68,95 @@ public sealed class LoggingIntegrationTests(TestContext testContext)
     [Timeout(10000, CooperativeCancellation = true)]
     public async Task Log_CategoryRules_UseMostSpecificPrefixAndDefault()
     {
-        using var host = CreateHost();
+        using var host = CreateLinkedHost(_ => { });
         await using (var scope = host.Services.CreateAsyncScope())
         {
-            var context = scope.ServiceProvider.GetRequiredService<LoggingTestDbContext>();
+            var context = scope.ServiceProvider.GetRequiredService<LinkedLoggingDbContext>();
             context.LogCategoryLevels.AddRange(
                 new CategoryLevel { Category = "Default", Level = LogLevel.Error },
                 new CategoryLevel { Category = "Example", Level = LogLevel.Warning },
                 new CategoryLevel { Category = "Example.Detail", Level = LogLevel.Critical },
                 new CategoryLevel { Category = "Example.Disabled", Level = LogLevel.None });
-            await context.SaveRulesAsync(testContext.CancellationToken);
+            await context.SaveChangesAsync(testContext.CancellationToken);
         }
 
         await host.StartAsync(testContext.CancellationToken);
         var factory = host.Services.GetRequiredService<ILoggerFactory>();
         factory.CreateLogger("Other").LogWarning("default rejected");
+        factory.CreateLogger("Other").LogWarning("duplicate rejection");
         factory.CreateLogger("Other").LogError("default accepted");
         factory.CreateLogger("example.Other").LogWarning("prefix accepted");
         factory.CreateLogger("Example.Detail.Child").LogError("specific rejected");
+        factory.CreateLogger("Example.Detail.Child").LogWarning("another rejected level");
         factory.CreateLogger("Example.Detail.Child").LogCritical("specific accepted");
         factory.CreateLogger("Example.Disabled").LogCritical("disabled rejected");
         await host.StopAsync(testContext.CancellationToken);
 
-        var entries = await ReadEntriesAsync(host);
+        await using var readScope = host.Services.CreateAsyncScope();
+        var entries = await readScope.ServiceProvider.GetRequiredService<LinkedLoggingDbContext>()
+            .LogEntries.AsNoTracking().ToListAsync(testContext.CancellationToken);
         CollectionAssert.AreEqual(new[] { "default accepted", "prefix accepted", "specific accepted" },
             entries.Select(entry => entry.Message).ToArray());
+        CollectionAssert.AreEquivalent(new[]
+        {
+            ("Other", LogLevel.Warning),
+            ("Example.Detail.Child", LogLevel.Error),
+            ("Example.Detail.Child", LogLevel.Warning),
+            ("Example.Disabled", LogLevel.Critical)
+        }, host.Services.GetRequiredService<SuppressedCategoryTracker>().Snapshot
+            .Where(item => item.Category == "Other" || item.Category.StartsWith("Example", StringComparison.Ordinal))
+            .ToArray());
+    }
+
+    [TestMethod]
+    [Timeout(10000, CooperativeCancellation = true)]
+    public async Task SuppressedCategoryTracker_IsSingletonAndReturnsIndependentSnapshots()
+    {
+        using var host = CreateLinkedHost(_ => { }, registerTwice: true);
+        var tracker = host.Services.GetRequiredService<SuppressedCategoryTracker>();
+        var initialSnapshot = tracker.Snapshot;
+        Assert.IsEmpty(initialSnapshot);
+        await using (var scope = host.Services.CreateAsyncScope())
+        {
+            Assert.AreSame(tracker, scope.ServiceProvider.GetRequiredService<SuppressedCategoryTracker>());
+            var context = scope.ServiceProvider.GetRequiredService<LinkedLoggingDbContext>();
+            context.LogCategoryLevels.Add(new CategoryLevel { Category = "Example", Level = LogLevel.Error });
+            await context.SaveChangesAsync(testContext.CancellationToken);
+        }
+
+        var factory = host.Services.GetRequiredService<ILoggerFactory>();
+        factory.CreateLogger("Example").LogInformation("filtered before category gate");
+        factory.CreateLogger("Example").Log(LogLevel.None, "disabled before category gate");
+        factory.CreateLogger("Example").LogWarning("category rejected");
+        factory.CreateLogger("Unmatched").LogWarning("no category rule");
+        await host.StartAsync(testContext.CancellationToken);
+        await host.StopAsync(testContext.CancellationToken);
+
+        Assert.IsEmpty(initialSnapshot);
+        var snapshot = tracker.Snapshot;
+        Assert.AreEqual(("Example", LogLevel.Warning), Assert.ContainsSingle(snapshot));
+        snapshot[0] = ("Modified", LogLevel.Critical);
+        Assert.AreEqual(("Example", LogLevel.Warning), Assert.ContainsSingle(tracker.Snapshot));
+        await using var readScope = host.Services.CreateAsyncScope();
+        var entries = await readScope.ServiceProvider.GetRequiredService<LinkedLoggingDbContext>()
+            .LogEntries.AsNoTracking().ToListAsync(testContext.CancellationToken);
+        Assert.AreEqual("no category rule", Assert.ContainsSingle(
+            entries.Where(entry => entry.Category is "Example" or "Unmatched")).Message);
+    }
+
+    [TestMethod]
+    [Timeout(10000, CooperativeCancellation = true)]
+    public async Task SuppressedCategoryTracker_MiddlewareSkipIsNotTracked()
+    {
+        using var host = CreateLinkedHost(shamble => shamble.Use((_, _) => Task.CompletedTask));
+        await host.StartAsync(testContext.CancellationToken);
+        host.Services.GetRequiredService<ILoggerFactory>().CreateLogger("Skipped").LogWarning("middleware skipped");
+        await host.StopAsync(testContext.CancellationToken);
+
+        Assert.IsEmpty(host.Services.GetRequiredService<SuppressedCategoryTracker>().Snapshot);
+        await using var scope = host.Services.CreateAsyncScope();
+        Assert.AreEqual(0, await scope.ServiceProvider.GetRequiredService<LinkedLoggingDbContext>()
+            .LogEntries.CountAsync(testContext.CancellationToken));
     }
 
     [TestMethod]

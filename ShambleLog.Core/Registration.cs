@@ -17,6 +17,7 @@ internal static class Registration
 
         builder.Services.TryAddScoped<ILoggingDbContext>(services => services.GetRequiredService<TContext>());
         builder.Services.TryAddScoped<CategoryLevelGate>();
+        builder.Services.TryAddSingleton<SuppressedCategoryTracker>();
         builder.Services.TryAddSingleton<LogEntryPipeline>();
         builder.Services.TryAddSingleton<LogEntryQueue>();
         builder.Services.TryAddEnumerable(ServiceDescriptor.Singleton<IConfigureOptions<LoggerFilterOptions>, CategoryLevelFilterOptions>());
