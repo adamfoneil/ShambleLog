@@ -10,10 +10,12 @@ public class LogQuery(ILoggingDbContext loggingDbContext)
 
     public class Criteria
     {
+        public DateOnly Date { get; set; }
         /// <summary>
         /// Time expression e.g. "30m" (last 30 min) or "1:2h" (between 1 and 2 hours ago).
-        /// Null means no time restriction within the selected date.
+        /// Null means no time restriction within the selected Date.
         /// Can also use suffix ":asc" or "asc" by itself to sort results ascending -- used with TraceId/RequestId searching
+        /// because the default sort is descending by timestamp, but you may want to see the earliest log entries first for a given TraceId/RequestId.
         /// </summary>
         public string? TimeExpression { get; set; }
         public string? Category { get; set; }
@@ -23,6 +25,7 @@ public class LogQuery(ILoggingDbContext loggingDbContext)
         /// <summary>
         /// Parses to a dictionary that affects where clause against the JSONB properties column, e.g. {"UserId": "123"}.
         /// Prefix a property value with "-" to exclude matching logs, e.g. "Method:-GetLogEntriesAfterIdAsync".
+        /// This is where you'd search for a specific TraceId or RequestId, e.g. {"TraceId": "abc123"}.
         /// </summary>
         public string? PropertiesContain { get; set; }
     }
