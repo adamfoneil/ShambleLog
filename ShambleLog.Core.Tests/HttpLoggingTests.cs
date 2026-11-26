@@ -64,12 +64,16 @@ public sealed class HttpLoggingTests(TestContext testContext)
             using var response = await client.GetAsync("/unhandled", testContext.CancellationToken);
             Assert.AreEqual(System.Net.HttpStatusCode.InternalServerError, response.StatusCode);
             using var anonymous = await client.GetAsync("/anonymous", testContext.CancellationToken);
+            using var escaped = await client.GetAsync("/line%0D%0Abreak", testContext.CancellationToken);
             await host.StopAsync(testContext.CancellationToken);
             var entries = await ReadEntriesAsync(host);
             var completion = entries.Single(entry => entry.Template.StartsWith("HTTP {Method}") && Property(entry, "Path").GetString() == "/unhandled");
             Assert.AreEqual(500, Property(completion, "StatusCode").GetInt32());
             Assert.IsFalse(completion.Properties.ContainsKey("IdentityUser"));
             Assert.IsFalse(entries.Single(entry => entry.Message == "Anonymous request").Properties.ContainsKey("IdentityUser"));
+            var escapedPath = entries.Where(entry => entry.Template.StartsWith("HTTP {Method}"))
+                .Select(entry => Property(entry, "Path").GetString()).Single(path => path!.Contains("break"));
+            Assert.AreEqual("/line\\r\\nbreak", escapedPath);
         }
 
         using (var host = CreateHost(false, false))

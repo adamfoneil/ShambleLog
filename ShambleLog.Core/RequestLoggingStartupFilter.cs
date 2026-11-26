@@ -13,8 +13,9 @@ internal sealed class RequestLoggingStartupFilter(ILogger<RequestLoggingStartupF
         app.Use(async (context, nextMiddleware) =>
         {
             var start = Stopwatch.GetTimestamp();
-            var method = context.Request.Method;
-            var path = context.Request.PathBase.Add(context.Request.Path).Value;
+            var method = context.Request.Method.Replace("\r", "\\r").Replace("\n", "\\n");
+            var path = context.Request.PathBase.Add(context.Request.Path).Value?
+                .Replace("\r", "\\r").Replace("\n", "\\n");
             var failed = false;
             try
             {
