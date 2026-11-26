@@ -4,7 +4,7 @@ namespace ShambleLog.Core;
 
 public sealed class SuppressedCategoryTracker
 {
-    private readonly object _lock = new();
+    private readonly Lock _lock = new();
     private readonly HashSet<(string Category, LogLevel SuppressedLevel)> _entries = [];
 
     public (string Category, LogLevel SuppressedLevel)[] Snapshot
