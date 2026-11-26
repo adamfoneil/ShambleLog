@@ -11,10 +11,10 @@ public class PostgreSQLLogQuery(ILoggingDbContext loggingDbContext) : LogQuery(l
     protected override (IQueryable<LogEntry> Query, Func<LogEntry, bool>? ClientFilter) FilterProperties(
         IQueryable<LogEntry> query, (string Key, JsonElement Value, bool Exclude)[] properties)
     {
-        foreach (var property in properties)
+        foreach (var (Key, Value, Exclude) in properties)
         {
-            var json = JsonSerializer.Serialize(new Dictionary<string, JsonElement> { [property.Key] = property.Value });
-            query = property.Exclude
+            var json = JsonSerializer.Serialize(new Dictionary<string, JsonElement> { [Key] = Value });
+            query = Exclude
                 ? query.Where(entry => !EF.Functions.JsonContains(entry.Properties, json))
                 : query.Where(entry => EF.Functions.JsonContains(entry.Properties, json));
         }
