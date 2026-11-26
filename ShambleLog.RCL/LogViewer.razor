@@ -1,7 +1,21 @@
+@typeparam TDbContext where TDbContext : DbContext, ILoggingDbContext
+
+@using Microsoft.EntityFrameworkCore
+@using ShambleLog.Core
+@using ShambleLog.Core.Middleware
+
 <div class="log-viewer">
     <div>
-        @*categories*@
-        @*EF Core filters*@
+        <RadzenAccordion>
+            <Items>
+                <RadzenAccordionItem Text="Categories">
+
+                </RadzenAccordionItem>
+                <RadzenAccordionItem Text="EF Core" Visible="_efCoreEnabled">
+
+                </RadzenAccordionItem>
+            </Items>
+        </RadzenAccordion>
     </div>
 
     <div>
@@ -9,3 +23,14 @@
         @*main table*@
     </div>
 </div>
+
+@code {
+    private bool _efCoreEnabled = false;
+
+    [Parameter, EditorRequired] public IDbContextFactory<TDbContext> DbFactory { get; set; }
+
+    protected override void OnParametersSet()
+    {
+        _efCoreEnabled = typeof(IEFCoreLoggingDbContext).IsAssignableFrom(typeof(TDbContext));
+    }
+}
