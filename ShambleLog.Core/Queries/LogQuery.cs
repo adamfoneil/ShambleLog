@@ -42,6 +42,11 @@ public class LogQuery(ILoggingDbContext loggingDbContext)
     {
         throw new NotImplementedException();
     }
+
+    public static IQueryable<LogEntry> ParseTimeExpression(IQueryable<LogEntry> query, string timeExpression)
+    {
+        throw new NotImplementedException();
+    }
     
     /// <summary>
     /// queries EFCoreEntries table joined to main LogEntry table
