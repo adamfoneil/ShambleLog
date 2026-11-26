@@ -34,10 +34,7 @@ public class PurgeService(
             {
                 await using var scope = _scopeFactory.CreateAsyncScope();
                 var cutoff = DateTime.UtcNow - _options.DeleteAfter;
-                var store = scope.ServiceProvider.GetService<ILogEntryStore>();
-                int deletedCount = store is not null
-                    ? await store.PurgeAsync(cutoff, stoppingToken)
-                    : await PurgeAsync(scope.ServiceProvider.GetRequiredService<ILoggingDbContext>(), cutoff, stoppingToken);
+                int deletedCount = await PurgeAsync(scope.ServiceProvider.GetRequiredService<ILoggingDbContext>(), cutoff, stoppingToken);
 
                 if (_logger.IsEnabled(LogLevel.Information))
                 {
@@ -58,9 +55,7 @@ public class PurgeService(
         }
     }
 
-    internal static async Task<int> PurgeAsync<TLogEntry>(
-        ILoggingDbContext<TLogEntry> context, DateTime cutoff, CancellationToken cancellationToken)
-        where TLogEntry : LogEntry
+    private static async Task<int> PurgeAsync(ILoggingDbContext context, DateTime cutoff, CancellationToken cancellationToken)
     {
         var entriesToDelete = context.LogEntries.Where(entry => entry.Timestamp < cutoff);
         context.LogEntries.RemoveRange(entriesToDelete);

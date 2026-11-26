@@ -6,7 +6,7 @@ using ShambleLog.Core.Entities;
 
 namespace ShambleLog.PostgreSQL.Configurations;
 
-internal sealed class LogEntryConfiguration : IEntityTypeConfiguration<LogEntry>
+public sealed class LogEntryConfiguration : IEntityTypeConfiguration<LogEntry>
 {
     public void Configure(EntityTypeBuilder<LogEntry> builder)
     {

@@ -27,8 +27,12 @@ public sealed class LogEntryWriter(LogEntryQueue queue, IServiceScopeFactory sco
                 try
                 {
                     await using var scope = scopeFactory.CreateAsyncScope();
-                    var store = scope.ServiceProvider.GetRequiredService<ILogEntryStore>();
-                    await store.SaveAsync(entry, stoppingToken);
+                    var gate = scope.ServiceProvider.GetRequiredService<CategoryLevelGate>();
+                    if (!await gate.IsEnabledAsync(entry, stoppingToken))
+                        continue;
+
+                    var pipeline = scope.ServiceProvider.GetRequiredService<LogEntryPipeline>();
+                    await pipeline.Invoke(new LogEntryContext(entry, scope.ServiceProvider, stoppingToken));
                 }
                 finally
                 {
@@ -52,29 +56,13 @@ public sealed class LogEntryWriter(LogEntryQueue queue, IServiceScopeFactory sco
     }
 }
 
-internal interface ILogEntryStore
+internal sealed class CategoryLevelGate(ILoggingDbContext context)
 {
-    Task SaveAsync(LogEntry entry, CancellationToken cancellationToken);
-    Task<int> PurgeAsync(DateTime cutoff, CancellationToken cancellationToken);
-}
-
-internal sealed class LogEntryStore<TLogEntry>(ILoggingDbContext<TLogEntry> context) : ILogEntryStore
-    where TLogEntry : LogEntry, new()
-{
-    public Task<int> PurgeAsync(DateTime cutoff, CancellationToken cancellationToken) =>
-        PurgeService.PurgeAsync(context, cutoff, cancellationToken);
-
-    public async Task SaveAsync(LogEntry entry, CancellationToken cancellationToken)
+    public async Task<bool> IsEnabledAsync(LogEntry entry, CancellationToken cancellationToken)
     {
         var rules = await context.LogCategoryLevels.AsNoTracking().ToListAsync(cancellationToken);
         var minimumLevel = FindMinimumLevel(rules, entry.Category);
-        if (minimumLevel is not null && (minimumLevel == LogLevel.None || entry.Level < minimumLevel))
-            return;
-
-        var persistedEntry = new TLogEntry { Timestamp = entry.Timestamp };
-        persistedEntry.SetProperties(entry.Category, entry.Level, entry.Template, entry.Message, entry.Exception, entry.Properties);
-        context.LogEntries.Add(persistedEntry);
-        await context.SaveChangesAsync(cancellationToken);
+        return minimumLevel is null || (minimumLevel != LogLevel.None && entry.Level >= minimumLevel);
     }
 
     private static LogLevel? FindMinimumLevel(IEnumerable<CategoryLevel> rules, string category)

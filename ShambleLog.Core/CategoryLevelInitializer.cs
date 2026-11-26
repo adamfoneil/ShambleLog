@@ -12,12 +12,11 @@ internal interface ICategoryLevelInitializer
     Task InitializeAsync(CancellationToken cancellationToken);
 }
 
-internal sealed class CategoryLevelInitializer<TLogEntry>(
+internal sealed class CategoryLevelInitializer(
     IServiceProvider services,
     IServiceScopeFactory scopeFactory,
     LogEntryQueue queue,
-    ILogger<CategoryLevelInitializer<TLogEntry>> logger) : ICategoryLevelInitializer
-    where TLogEntry : LogEntry
+    ILogger<CategoryLevelInitializer> logger) : ICategoryLevelInitializer
 {
     public async Task InitializeAsync(CancellationToken cancellationToken)
     {
@@ -42,7 +41,7 @@ internal sealed class CategoryLevelInitializer<TLogEntry>(
         try
         {
             await using var scope = scopeFactory.CreateAsyncScope();
-            var context = scope.ServiceProvider.GetRequiredService<ILoggingDbContext<TLogEntry>>();
+            var context = scope.ServiceProvider.GetRequiredService<ILoggingDbContext>();
             var existing = await context.LogCategoryLevels.AsNoTracking().ToListAsync(cancellationToken);
             var added = false;
             foreach (var rule in configured)

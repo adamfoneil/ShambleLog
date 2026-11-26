@@ -25,6 +25,7 @@
     <Compile Include="..\ShambleLog.Core\CategoryLevelInitializer.cs" Link="Core\CategoryLevelInitializer.cs" />
     <Compile Include="..\ShambleLog.Core\ILoggingDbContext.cs" Link="Core\ILoggingDbContext.cs" />
     <Compile Include="..\ShambleLog.Core\LogEntryQueue.cs" Link="Core\LogEntryQueue.cs" />
+    <Compile Include="..\ShambleLog.Core\LogEntryPipeline.cs" Link="Core\LogEntryPipeline.cs" />
     <Compile Include="..\ShambleLog.Core\LogEntryWriter.cs" Link="Core\LogEntryWriter.cs" />
     <Compile Include="..\ShambleLog.Core\PurgeService.cs" Link="Core\PurgeService.cs" />
     <Compile Include="..\ShambleLog.Core\ShambleLogLoggerProvider.cs" Link="Core\ShambleLogLoggerProvider.cs" />

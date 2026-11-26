@@ -196,33 +196,45 @@ public sealed class LoggingIntegrationTests(TestContext testContext)
 
     [TestMethod]
     [Timeout(10000, CooperativeCancellation = true)]
-    public async Task AddShambleLog_CustomEntry_SeedsConfiguredLevels()
+    public async Task Log_Middleware_RunsInOrderBranchesRejoinAndCanShortCircuit()
     {
-        var root = new InMemoryDatabaseRoot();
-        using var host = new HostBuilder()
-            .ConfigureAppConfiguration(configuration => configuration.AddInMemoryCollection(new Dictionary<string, string?>
+        var calls = new System.Collections.Concurrent.ConcurrentQueue<string>();
+        using var host = CreateLinkedHost(shamble => shamble
+            .Use(async (context, next) =>
             {
-                ["Logging:LogLevel:Default"] = "Error"
-            }))
-            .ConfigureLogging((context, logging) =>
-            {
-                logging.ClearProviders();
-                logging.AddConfiguration(context.Configuration.GetSection("Logging"));
-                logging.AddShambleLog<CustomLoggingDbContext, CustomLogEntry>();
+                calls.Enqueue($"first:{context.Entry.Message}");
+                if (context.Entry.Message == "skip")
+                    return;
+                await next(context);
+                calls.Enqueue($"after-save:{context.Entry.Id != 0}");
             })
-            .ConfigureServices(services => services.AddDbContext<CustomLoggingDbContext>(options =>
-                options.UseInMemoryDatabase("custom-config", root)))
-            .Build();
+            .UseForCategory("linked", branch => branch.Use((context, next) =>
+            {
+                calls.Enqueue($"branch:{context.Entry.Category}");
+                return next(context);
+            }))
+            .Use((context, next) =>
+            {
+                calls.Enqueue($"last:{context.Entry.Message}");
+                return next(context);
+            }));
         await host.StartAsync(testContext.CancellationToken);
-        var logger = host.Services.GetRequiredService<ILogger<LoggingIntegrationTests>>();
-        logger.LogWarning("filtered");
-        logger.LogError("accepted");
+        var factory = host.Services.GetRequiredService<ILoggerFactory>();
+        factory.CreateLogger("Linked.Child").LogWarning("linked");
+        factory.CreateLogger("Other").LogWarning("other");
+        factory.CreateLogger("Linked.Child").LogWarning("skip");
         await host.StopAsync(testContext.CancellationToken);
 
+        CollectionAssert.AreEqual(new[]
+        {
+            "first:linked", "branch:Linked.Child", "last:linked", "after-save:True",
+            "first:other", "last:other", "after-save:True",
+            "first:skip"
+        }, calls.ToArray());
         await using var scope = host.Services.CreateAsyncScope();
-        var context = scope.ServiceProvider.GetRequiredService<CustomLoggingDbContext>();
-        Assert.AreEqual(LogLevel.Error, (await context.LogCategoryLevels.SingleAsync(testContext.CancellationToken)).Level);
-        Assert.AreEqual("accepted", Assert.ContainsSingle(await context.LogEntries.ToListAsync(testContext.CancellationToken)).Message);
+        var messages = await scope.ServiceProvider.GetRequiredService<LinkedLoggingDbContext>()
+            .LogEntries.AsNoTracking().Select(entry => entry.Message).ToListAsync(testContext.CancellationToken);
+        CollectionAssert.AreEquivalent(new[] { "linked", "other" }, messages);
     }
 
     [TestMethod]
@@ -259,12 +271,12 @@ public sealed class LoggingIntegrationTests(TestContext testContext)
 
     [TestMethod]
     [Timeout(10000, CooperativeCancellation = true)]
-    public async Task Log_CustomEntry_CategoryRuleFiltersBeforeMapping()
+    public async Task Log_Middleware_CategoryRuleFiltersBeforePipeline()
     {
-        using var host = CreateCustomHost();
+        using var host = CreateLinkedHost(shamble => shamble.Use<NameDetailMiddleware>());
         await using (var scope = host.Services.CreateAsyncScope())
         {
-            var context = scope.ServiceProvider.GetRequiredService<CustomLoggingDbContext>();
+            var context = scope.ServiceProvider.GetRequiredService<LinkedLoggingDbContext>();
             context.LogCategoryLevels.Add(new CategoryLevel { Category = "Default", Level = LogLevel.Error });
             await context.SaveChangesAsync(testContext.CancellationToken);
         }
@@ -275,10 +287,10 @@ public sealed class LoggingIntegrationTests(TestContext testContext)
         await host.StopAsync(testContext.CancellationToken);
 
         await using var readScope = host.Services.CreateAsyncScope();
-        var entry = Assert.ContainsSingle(await readScope.ServiceProvider.GetRequiredService<CustomLoggingDbContext>()
-            .LogEntries.AsNoTracking().ToListAsync(testContext.CancellationToken));
-        Assert.AreEqual("world", entry.Name);
-        Assert.AreEqual("Retained world", entry.Message);
+        var detail = Assert.ContainsSingle(await readScope.ServiceProvider.GetRequiredService<LinkedLoggingDbContext>()
+            .Details.AsNoTracking().Include(item => item.LogEntry).ToListAsync(testContext.CancellationToken));
+        Assert.AreEqual("world", detail.Name);
+        Assert.AreEqual("Retained world", detail.LogEntry.Message);
     }
 
     [TestMethod]
@@ -369,10 +381,10 @@ public sealed class LoggingIntegrationTests(TestContext testContext)
 
     [TestMethod]
     [Timeout(10000, CooperativeCancellation = true)]
-    public async Task AddShambleLog_CustomEntry_WithPurgeOptions_RemovesExpiredEntries()
+    public async Task AddShambleLog_MiddlewareOverload_WithPurgeOptions_RemovesExpiredEntries()
     {
         var options = new PurgeServiceOptions { DeleteAfter = TimeSpan.FromDays(1), Interval = TimeSpan.FromHours(2) };
-        using var host = CreateCustomHost(options, registerTwice: true);
+        using var host = CreateLinkedHost(shamble => shamble.Use<NameDetailMiddleware>(), options, registerTwice: true);
         options.DeleteAfter = TimeSpan.Zero;
         options.Interval = TimeSpan.FromSeconds(1);
 
@@ -383,19 +395,19 @@ public sealed class LoggingIntegrationTests(TestContext testContext)
 
         await using (var scope = host.Services.CreateAsyncScope())
         {
-            var context = scope.ServiceProvider.GetRequiredService<CustomLoggingDbContext>();
-            context.LogEntries.Add(new CustomLogEntry { Timestamp = DateTime.UtcNow.AddDays(-2), Message = "expired" });
-            context.LogEntries.Add(new CustomLogEntry { Timestamp = DateTime.UtcNow, Message = "retained" });
+            var context = scope.ServiceProvider.GetRequiredService<LinkedLoggingDbContext>();
+            context.LogEntries.Add(new LogEntry { Timestamp = DateTime.UtcNow.AddDays(-2), Message = "expired" });
+            context.LogEntries.Add(new LogEntry { Timestamp = DateTime.UtcNow, Message = "retained" });
             await context.SaveChangesAsync(testContext.CancellationToken);
         }
 
         await host.StartAsync(testContext.CancellationToken);
         var deadline = DateTime.UtcNow.AddSeconds(5);
-        List<CustomLogEntry> entries;
+        List<LogEntry> entries;
         do
         {
             await using var scope = host.Services.CreateAsyncScope();
-            entries = await scope.ServiceProvider.GetRequiredService<CustomLoggingDbContext>()
+            entries = await scope.ServiceProvider.GetRequiredService<LinkedLoggingDbContext>()
                 .LogEntries.AsNoTracking().ToListAsync(testContext.CancellationToken);
             if (entries.All(entry => entry.Message != "expired"))
                 break;
@@ -408,16 +420,16 @@ public sealed class LoggingIntegrationTests(TestContext testContext)
     }
 
     [TestMethod]
-    public void AddShambleLog_CustomEntry_WithoutPurgeOptions_DoesNotRegisterPurgeService()
+    public void AddShambleLog_MiddlewareOverload_WithoutPurgeOptions_DoesNotRegisterPurgeService()
     {
-        using var host = CreateCustomHost();
+        using var host = CreateLinkedHost(shamble => shamble.Use<NameDetailMiddleware>());
         Assert.IsEmpty(host.Services.GetServices<IHostedService>().OfType<PurgeService>());
     }
 
     [TestMethod]
     [DataRow(false)]
     [DataRow(true)]
-    public void AddShambleLog_MixedOverloads_RegisterOnePurgeService(bool genericFirst)
+    public void AddShambleLog_MixedOverloads_RegisterOnePurgeService(bool middlewareFirst)
     {
         var purgeOptions = new PurgeServiceOptions
         {
@@ -427,15 +439,15 @@ public sealed class LoggingIntegrationTests(TestContext testContext)
         using var host = new HostBuilder()
             .ConfigureLogging(logging =>
             {
-                if (genericFirst)
+                if (middlewareFirst)
                 {
-                    logging.AddShambleLog<LoggingTestDbContext, LogEntry>(purgeOptions);
+                    logging.AddShambleLog<LoggingTestDbContext>(shamble => shamble.Use((context, next) => next(context)), purgeOptions);
                     logging.AddShambleLog<LoggingTestDbContext>();
                 }
                 else
                 {
                     logging.AddShambleLog<LoggingTestDbContext>();
-                    logging.AddShambleLog<LoggingTestDbContext, LogEntry>(purgeOptions);
+                    logging.AddShambleLog<LoggingTestDbContext>(shamble => shamble.Use((context, next) => next(context)), purgeOptions);
                 }
             })
             .ConfigureServices(services =>
@@ -455,8 +467,6 @@ public sealed class LoggingIntegrationTests(TestContext testContext)
         using var scope = host.Services.CreateScope();
         Assert.AreSame(scope.ServiceProvider.GetRequiredService<LoggingTestDbContext>(),
             scope.ServiceProvider.GetRequiredService<ILoggingDbContext>());
-        Assert.AreSame(scope.ServiceProvider.GetRequiredService<LoggingTestDbContext>(),
-            scope.ServiceProvider.GetRequiredService<ILoggingDbContext<LogEntry>>());
     }
 
     [TestMethod]
@@ -513,42 +523,33 @@ public sealed class LoggingIntegrationTests(TestContext testContext)
 
     [TestMethod]
     [Timeout(10000, CooperativeCancellation = true)]
-    public async Task Log_CustomEntry_PersistsExtractedColumnAndOriginalValues()
+    public async Task Log_CategoryMiddleware_PersistsLinkedEntityForMatchingCategory()
     {
-        using var host = CreateCustomHost();
+        using var host = CreateLinkedHost(shamble => shamble
+            .UseForCategory("Linked", branch => branch.Use<NameDetailMiddleware>()));
         await host.StartAsync(testContext.CancellationToken);
-        var logger = host.Services.GetRequiredService<ILogger<LoggingIntegrationTests>>();
-        var exception = new InvalidOperationException("custom failure");
-        var before = DateTime.UtcNow;
-        using (logger.BeginScope("Scope {ScopeId}", 7))
-        {
-            logger.LogWarning(new EventId(12, "Test"), exception, "Hello {Name}", "world");
-        }
-        var after = DateTime.UtcNow;
+        var factory = host.Services.GetRequiredService<ILoggerFactory>();
+        factory.CreateLogger("Linked.Child").LogWarning("Hello {Name}", "world");
+        factory.CreateLogger("Other").LogWarning("Hello {Name}", "other");
         await host.StopAsync(testContext.CancellationToken);
 
         await using var scope = host.Services.CreateAsyncScope();
-        var entry = Assert.ContainsSingle(await scope.ServiceProvider.GetRequiredService<CustomLoggingDbContext>()
-            .LogEntries.AsNoTracking().ToListAsync(testContext.CancellationToken));
-        Assert.AreEqual("world", entry.Name);
-        Assert.AreEqual(LogLevel.Warning, entry.Level);
-        Assert.AreEqual(typeof(LoggingIntegrationTests).FullName, entry.Category);
-        Assert.AreEqual("Hello {Name}", entry.Template);
-        Assert.AreEqual("Hello world", entry.Message);
-        Assert.AreEqual(exception.ToString(), entry.Exception);
-        Assert.AreEqual(DateTimeKind.Utc, entry.Timestamp.Kind);
-        Assert.IsTrue(entry.Timestamp >= before && entry.Timestamp <= after);
-        Assert.AreEqual("world", Property(entry, "Name").GetString());
-        Assert.AreEqual(12, Property(entry, "EventId").GetInt32());
-        Assert.AreEqual("Test", Property(entry, "EventName").GetString());
-        Assert.AreEqual("Scope 7", Assert.ContainsSingle(Property(entry, "Scopes").EnumerateArray()).GetString());
+        var context = scope.ServiceProvider.GetRequiredService<LinkedLoggingDbContext>();
+        var entries = await context.LogEntries.AsNoTracking().ToListAsync(testContext.CancellationToken);
+        Assert.HasCount(2, entries);
+        var detail = Assert.ContainsSingle(await context.Details.AsNoTracking().ToListAsync(testContext.CancellationToken));
+        var linkedEntry = entries.Single(entry => entry.Id == detail.LogEntryId);
+        Assert.AreEqual("Linked.Child", linkedEntry.Category);
+        Assert.AreEqual("Hello world", linkedEntry.Message);
+        Assert.AreEqual("world", detail.Name);
+        Assert.AreEqual("world", Property(linkedEntry, "Name").GetString());
     }
 
     [TestMethod]
     [Timeout(10000, CooperativeCancellation = true)]
-    public async Task StopAsync_CustomEntrySetPropertiesFails_PropagatesFailure()
+    public async Task StopAsync_MiddlewareFails_PropagatesFailureWithoutSaving()
     {
-        using var host = CreateCustomHost();
+        using var host = CreateLinkedHost(shamble => shamble.Use<NameDetailMiddleware>());
         await host.StartAsync(testContext.CancellationToken);
         var writer = host.Services.GetRequiredService<LogEntryWriter>();
         host.Services.GetRequiredService<ILogger<LoggingIntegrationTests>>().LogWarning("Fail {Name}", "throw");
@@ -556,11 +557,12 @@ public sealed class LoggingIntegrationTests(TestContext testContext)
         var exception = await Assert.ThrowsExactlyAsync<InvalidOperationException>(
             () => host.StopAsync(testContext.CancellationToken));
 
-        Assert.AreEqual("Custom mapping failed", exception.Message);
+        Assert.AreEqual("Middleware failed", exception.Message);
         Assert.IsTrue(writer.ExecuteTask!.IsFaulted);
         await using var scope = host.Services.CreateAsyncScope();
-        Assert.IsEmpty(await scope.ServiceProvider.GetRequiredService<CustomLoggingDbContext>()
-            .LogEntries.AsNoTracking().ToListAsync(testContext.CancellationToken));
+        var context = scope.ServiceProvider.GetRequiredService<LinkedLoggingDbContext>();
+        Assert.IsEmpty(await context.LogEntries.AsNoTracking().ToListAsync(testContext.CancellationToken));
+        Assert.IsEmpty(await context.Details.AsNoTracking().ToListAsync(testContext.CancellationToken));
     }
 
     private static IHost CreateConfiguredHost(Dictionary<string, string?> values, CapturingLoggerProvider warnings,
@@ -605,7 +607,8 @@ public sealed class LoggingIntegrationTests(TestContext testContext)
         }
     }
 
-    private static IHost CreateCustomHost(PurgeServiceOptions? purgeServiceOptions = null, bool registerTwice = false)
+    private static IHost CreateLinkedHost(Action<ShambleLogBuilder> configure,
+        PurgeServiceOptions? purgeServiceOptions = null, bool registerTwice = false)
     {
         var databaseRoot = new InMemoryDatabaseRoot();
         return new HostBuilder()
@@ -613,19 +616,16 @@ public sealed class LoggingIntegrationTests(TestContext testContext)
             {
                 logging.ClearProviders();
                 logging.SetMinimumLevel(LogLevel.Warning);
-                if (purgeServiceOptions is null)
-                    logging.AddShambleLog<CustomLoggingDbContext, CustomLogEntry>();
-                else
-                    logging.AddShambleLog<CustomLoggingDbContext, CustomLogEntry>(purgeServiceOptions);
+                logging.AddShambleLog<LinkedLoggingDbContext>(configure, purgeServiceOptions);
                 if (registerTwice)
-                    logging.AddShambleLog<CustomLoggingDbContext, CustomLogEntry>(purgeServiceOptions);
+                    logging.AddShambleLog<LinkedLoggingDbContext>(purgeServiceOptions);
             })
             .ConfigureServices(services =>
             {
                 services.Configure<HostOptions>(options =>
                     options.BackgroundServiceExceptionBehavior = BackgroundServiceExceptionBehavior.Ignore);
-                services.AddDbContext<CustomLoggingDbContext>(options =>
-                    options.UseInMemoryDatabase("custom-logs", databaseRoot));
+                services.AddDbContext<LinkedLoggingDbContext>(options =>
+                    options.UseInMemoryDatabase("linked-logs", databaseRoot));
             })
             .Build();
     }
@@ -666,30 +666,44 @@ public sealed class LoggingIntegrationTests(TestContext testContext)
     private static JsonElement Property(LogEntry entry, string name) =>
         Assert.IsInstanceOfType<JsonElement>(entry.Properties[name]);
 
-    public sealed class CustomLogEntry : LogEntry
+    public sealed class LinkedLogDetail
     {
+        public long Id { get; set; }
+        public long LogEntryId { get; set; }
+        public LogEntry LogEntry { get; set; } = null!;
         public string? Name { get; set; }
+    }
 
-        public override void SetProperties(string sourceContext, LogLevel level, string template, string message,
-            string? exception, Dictionary<string, object?> properties)
+    private sealed class NameDetailMiddleware(LinkedLoggingDbContext context) : ILogEntryMiddleware
+    {
+        public Task InvokeAsync(LogEntryContext logContext, LogEntryDelegate next)
         {
-            base.SetProperties(sourceContext, level, template, message, exception, properties);
-            Name = properties.TryGetValue("Name", out var name) ? name as string : null;
-            if (Name == "throw")
-                throw new InvalidOperationException("Custom mapping failed");
+            var name = logContext.Entry.Properties.TryGetValue("Name", out var value) ? value as string : null;
+            if (name == "throw")
+                throw new InvalidOperationException("Middleware failed");
+            context.Details.Add(new LinkedLogDetail { LogEntry = logContext.Entry, Name = name });
+            return next(logContext);
         }
     }
 
-    private sealed class CustomLoggingDbContext(DbContextOptions<CustomLoggingDbContext> options)
-        : DbContext(options), ILoggingDbContext<CustomLogEntry>
+    private sealed class LinkedLoggingDbContext(DbContextOptions<LinkedLoggingDbContext> options)
+        : DbContext(options), ILoggingDbContext
     {
-        public DbSet<CustomLogEntry> LogEntries { get; set; } = null!;
+        public DbSet<LogEntry> LogEntries { get; set; } = null!;
         public DbSet<CategoryLevel> LogCategoryLevels { get; set; } = null!;
+        public DbSet<LinkedLogDetail> Details { get; set; } = null!;
 
-        protected override void OnModelCreating(ModelBuilder modelBuilder) =>
-            modelBuilder.Entity<CustomLogEntry>().Property(entry => entry.Properties).HasConversion(
+        protected override void OnModelCreating(ModelBuilder modelBuilder)
+        {
+            modelBuilder.Entity<LogEntry>().Property(entry => entry.Properties).HasConversion(
                 properties => SerializeProperties(properties),
                 json => DeserializeProperties(json));
+            modelBuilder.Entity<LinkedLogDetail>()
+                .HasOne(detail => detail.LogEntry)
+                .WithMany()
+                .HasForeignKey(detail => detail.LogEntryId)
+                .OnDelete(DeleteBehavior.Cascade);
+        }
 
         private static string SerializeProperties(Dictionary<string, object?> properties) =>
             JsonSerializer.Serialize(properties);

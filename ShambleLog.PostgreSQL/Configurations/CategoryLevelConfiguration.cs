@@ -4,7 +4,7 @@ using ShambleLog.Core.Entities;
 
 namespace ShambleLog.PostgreSQL.Configurations;
 
-internal sealed class CategoryLevelConfiguration : IEntityTypeConfiguration<CategoryLevel>
+public sealed class CategoryLevelConfiguration : IEntityTypeConfiguration<CategoryLevel>
 {
     public void Configure(EntityTypeBuilder<CategoryLevel> builder)
     {
