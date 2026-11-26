@@ -174,3 +174,11 @@ The `EFCoreCriteria` overload requires `IEFCoreLoggingDbContext`; it returns com
 ## Tests
 
 `ShambleLog.Core.Tests` contains MSTest integration tests using isolated EF Core in-memory databases. Run them in Visual Studio Test Explorer or with `dotnet test ShambleLog.slnx`. The suite covers structured log data, filtering, concurrent writes and shutdown draining, duplicate registration, log entry middleware, recursion prevention, and database failure propagation.
+
+## Publishing ShambleLog.Core
+
+The manually triggered `Publish ShambleLog.Core` workflow uses NuGet trusted publishing. Before running it, create or update a trusted publishing policy on nuget.org with repository owner `adamfoneil`, repository `ShambleLog`, and workflow file `publish-core.yml` (filename only). Leave the environment empty because the workflow does not use a GitHub environment. Grant the policy permission to publish `ShambleLog.Core` and new versions as appropriate.
+
+Set the repository Actions secret `NUGET_USER` to the NuGet username of the **person who created the policy**, not necessarily the policy owner or an email address. A `No matching trust policy` error requires checking that username and the policy's repository, workflow, environment, scope, and active status on nuget.org. See [NuGet trusted publishing](https://learn.microsoft.com/en-us/nuget/nuget-org/trusted-publishing) for details.
+
+The workflow exchanges its GitHub OIDC token for a short-lived NuGet API key; it does not require a stored `NUGET_API_KEY`.
