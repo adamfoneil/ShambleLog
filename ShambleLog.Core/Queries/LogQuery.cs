@@ -8,7 +8,7 @@ using ShambleLog.Core.Middleware;
 
 namespace ShambleLog.Core.Queries;
 
-public class LogQuery(ILoggingDbContext loggingDbContext)
+public abstract class LogQuery(ILoggingDbContext loggingDbContext)
 {
     private readonly ILoggingDbContext _loggingDbContext = loggingDbContext;
 
@@ -52,14 +52,10 @@ public class LogQuery(ILoggingDbContext loggingDbContext)
         IQueryable<LogEntry> query = _loggingDbContext.LogEntries.AsNoTracking();
         if (_loggingDbContext is IEFCoreLoggingDbContext)
             query = query.Include(entry => entry.EFCoreEntry);
-        query = FilterProperties(query, properties);
-        query = ApplyCriteria(query, criteria);
-        var rows = await query.ToArrayAsync(cancellationToken);
-#if SHAMBLELOG_POSTGRESQL
-        return rows;
-#else
-        return properties.Length == 0 ? rows : rows.Where(entry => MatchesProperties(entry, properties)).ToArray();
-#endif
+        var (filteredQuery, clientFilter) = FilterProperties(query, properties);
+        filteredQuery = ApplyCriteria(filteredQuery, criteria);
+        var rows = await filteredQuery.ToArrayAsync(cancellationToken);
+        return clientFilter is null ? rows : [.. rows.Where(clientFilter)];
     }
 
     public static IQueryable<LogEntry> ParseTimeExpression(IQueryable<LogEntry> query, string timeExpression)
@@ -124,7 +120,7 @@ public class LogQuery(ILoggingDbContext loggingDbContext)
         var efQueryDb = _loggingDbContext as IEFCoreLoggingDbContext ?? throw new NotSupportedException("EFCore query requires IEFCoreLoggingDbContext");
         ArgumentNullException.ThrowIfNull(efCoreCriteria);
         var properties = ParseProperties(criteria?.PropertiesContain);
-        IQueryable<LogEntry> logs = FilterProperties(_loggingDbContext.LogEntries.AsNoTracking(), properties);
+        var (logs, clientFilter) = FilterProperties(_loggingDbContext.LogEntries.AsNoTracking(), properties);
         if (criteria is not null)
             logs = ApplyCriteria(logs, criteria);
 
@@ -144,14 +140,13 @@ public class LogQuery(ILoggingDbContext loggingDbContext)
         var ascending = IsAscending(criteria?.TimeExpression);
         joined = ascending ? joined.OrderBy(row => row.Log.Timestamp) : joined.OrderByDescending(row => row.Log.Timestamp);
         var rows = await joined.ToArrayAsync(cancellationToken);
-#if !SHAMBLELOG_POSTGRESQL
-        rows = rows.Where(row => MatchesProperties(row.Log, properties)).ToArray();
-#endif
-        return rows.Select(row =>
+        if (clientFilter is not null)
+            rows = [.. rows.Where(row => clientFilter(row.Log))];
+        return [.. rows.Select(row =>
         {
             row.Command.LogEntry = row.Log;
             return row.Command;
-        }).ToArray();
+        })];
     }
 
     private static IQueryable<LogEntry> ApplyCriteria(IQueryable<LogEntry> query, Criteria criteria)
@@ -194,19 +189,20 @@ public class LogQuery(ILoggingDbContext loggingDbContext)
         }).ToArray();
     }
 
-    private static IQueryable<LogEntry> FilterProperties(IQueryable<LogEntry> query, (string Key, JsonElement Value, bool Exclude)[] properties)
-    {
-#if SHAMBLELOG_POSTGRESQL
-        foreach (var property in properties)
-        {
-            var json = JsonSerializer.Serialize(new Dictionary<string, JsonElement> { [property.Key] = property.Value });
-            query = property.Exclude
-                ? query.Where(entry => !EF.Functions.JsonContains(entry.Properties, json))
-                : query.Where(entry => EF.Functions.JsonContains(entry.Properties, json));
-        }
-#endif
-        return query;
-    }
+    /// <summary>
+    /// Applies provider-side property filters and optionally returns a predicate for filtering materialized entries.
+    /// Properties may be empty; excluded values have already had their leading minus sign removed.
+    /// Return a null predicate when all filtering is performed by the query.
+    /// </summary>
+    protected abstract (IQueryable<LogEntry> Query, Func<LogEntry, bool>? ClientFilter) FilterProperties(
+        IQueryable<LogEntry> query, (string Key, JsonElement Value, bool Exclude)[] properties);
+}
+
+public class ClientSideLogQuery(ILoggingDbContext loggingDbContext) : LogQuery(loggingDbContext)
+{
+    protected override (IQueryable<LogEntry> Query, Func<LogEntry, bool>? ClientFilter) FilterProperties(
+        IQueryable<LogEntry> query, (string Key, JsonElement Value, bool Exclude)[] properties) =>
+        (query, properties.Length == 0 ? null : entry => MatchesProperties(entry, properties));
 
     private static bool MatchesProperties(LogEntry entry, (string Key, JsonElement Value, bool Exclude)[] properties) =>
         properties.All(property =>

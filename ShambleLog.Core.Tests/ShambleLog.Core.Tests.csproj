@@ -18,6 +18,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\ShambleLog.Core\ShambleLog.Core.csproj" />
+    <ProjectReference Include="..\ShambleLog.PostgreSQL\ShambleLog.PostgreSQL.csproj" Aliases="PostgreSQL" />
   </ItemGroup>
 
 </Project>

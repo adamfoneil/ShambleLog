@@ -163,7 +163,9 @@ EF Core logs commands at `Information`, so the category must pass your logging f
 
 ### Querying logs
 
-`LogQuery.ExecuteAsync` filters a selected UTC `Date`, with optional category and exact level, template and message substrings, and `PropertiesContain` JSON. Property values use JSON containment; prefix a string value with `-` to exclude matches (including entries where that property is absent). PostgreSQL applies these filters to the JSONB column. The provider-independent Core implementation filters properties after retrieving the other matches.
+`LogQuery.ExecuteAsync` filters a selected UTC `Date`, with optional category and exact level, template and message substrings, and `PropertiesContain` JSON. Property values use JSON containment; prefix a string value with `-` to exclude matches (including entries where that property is absent).
+
+`LogQuery` is an abstract base class. Construct `ShambleLog.PostgreSQL.PostgreSQLLogQuery` for PostgreSQL, which filters the JSONB column in the database, or `ShambleLog.Core.Queries.ClientSideLogQuery` for provider-independent filtering after retrieving the other matches. Both take an `ILoggingDbContext`. Existing callers that constructed `LogQuery` directly must switch to one of these implementations. Other providers can derive from `LogQuery` and implement its property-filtering hook.
 
 `TimeExpression` is relative to the current UTC time and is combined with the selected date: use an integer with `s`, `m`, `h`, or `d` (for example `30m`), or a range from nearer to farther in the past (for example `1:2h`). Results are newest first by default; append `:asc`, or use `asc` alone, for oldest first. Invalid expressions throw `FormatException`.
 

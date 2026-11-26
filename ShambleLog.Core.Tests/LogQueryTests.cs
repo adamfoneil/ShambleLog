@@ -4,6 +4,7 @@ using Microsoft.Extensions.Logging;
 using ShambleLog.Core.Entities;
 using ShambleLog.Core.Middleware;
 using ShambleLog.Core.Queries;
+using LogQuery = ShambleLog.Core.Queries.ClientSideLogQuery;
 
 namespace ShambleLog.Core.Tests;
 
@@ -131,6 +132,42 @@ public sealed class LogQueryTests
         using var cancellation = new CancellationTokenSource();
         cancellation.Cancel();
         await Assert.ThrowsAsync<OperationCanceledException>(() => query.ExecuteAsync(criteria, cancellation.Token));
+    }
+
+    [TestMethod]
+    public async Task PropertyFilterHook_AppliesServerAndClientFiltersToBothQueries()
+    {
+        await using var db = CreateContext();
+        var date = new DateTime(2026, 1, 15, 0, 0, 0, DateTimeKind.Utc);
+        var first = Entry(1, date.AddHours(1), "keep");
+        var second = Entry(2, date.AddHours(2), "keep");
+        var third = Entry(3, date.AddHours(3), "skip");
+        first.EFCoreEntry = new EFCoreEntry { CommandText = "first" };
+        second.EFCoreEntry = new EFCoreEntry { CommandText = "second" };
+        third.EFCoreEntry = new EFCoreEntry { CommandText = "third" };
+        db.LogEntries.AddRange(first, second, third);
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        var query = new HookLogQuery(db);
+        var criteria = new ShambleLog.Core.Queries.LogQuery.Criteria
+        {
+            Date = DateOnly.FromDateTime(date),
+            PropertiesContain = """{"Limit":2}"""
+        };
+        CollectionAssert.AreEqual(new long[] { 1 }, (await query.ExecuteAsync(criteria)).Select(row => row.Id).ToArray());
+        CollectionAssert.AreEqual(new long[] { 1 }, (await query.ExecuteAsync(new ShambleLog.Core.Queries.LogQuery.EFCoreCriteria(), criteria))
+            .Select(row => row.LogEntryId).ToArray());
+    }
+
+    private sealed class HookLogQuery(ILoggingDbContext db) : ShambleLog.Core.Queries.LogQuery(db)
+    {
+        protected override (IQueryable<LogEntry> Query, Func<LogEntry, bool>? ClientFilter) FilterProperties(
+            IQueryable<LogEntry> query, (string Key, JsonElement Value, bool Exclude)[] properties)
+        {
+            var limit = properties.Single(property => property.Key == "Limit").Value.GetInt64();
+            return (query.Where(entry => entry.Message == "keep"), entry => entry.Id < limit);
+        }
     }
 
     private static LogEntry Entry(long id, DateTime timestamp, string message) => new()
