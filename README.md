@@ -80,7 +80,32 @@ A single hosted worker saves entries in order using a new DI scope per entry. Lo
 
 The hosted `LogEntryWriter` is also available as a singleton from dependency injection. Its inherited `ExecuteTask` is null before the host starts, runs while the writer is active, and completes or faults when the writer stops. For example, resolve it with `host.Services.GetRequiredService<LogEntryWriter>()` and inspect `ExecuteTask`. A running task does not guarantee database connectivity or that the queue is keeping up. Let the host manage the writer's lifecycle.
 
-To enable periodic deletion of old entries, pass `new PurgeServiceOptions { DeleteAfter = TimeSpan.FromDays(30), Interval = TimeSpan.FromHours(1) }` to `AddShambleLog<AppDbContext>(...)`, either alone or after a middleware configuration callback. Purging starts with the host and runs immediately, then at the configured interval; without options, no purge worker is registered. Set `DeleteAfter` explicitly to the desired retention period.
+To enable periodic deletion of old entries, configure `WithRetentionPeriod`:
+
+```csharp
+builder.Logging.AddShambleLog<AppDbContext>(shamble => shamble
+    .WithRetentionPeriod(new RetentionPeriodOptions
+    {
+        DeleteAfter = TimeSpan.FromDays(30),
+        Interval = TimeSpan.FromHours(1)
+    }));
+```
+
+Purging starts with the host and runs immediately, then at the configured interval; without this option, no retention worker is registered. Set `DeleteAfter` explicitly to the desired retention period. Options are copied at registration.
+
+## HTTP logging and identity
+
+For ASP.NET Core applications, opt into either capability through the same configuration callback:
+
+```csharp
+builder.Logging.AddShambleLog<AppDbContext>(shamble => shamble
+    .WithIdentityUser()
+    .WithHttpRequestLogging());
+```
+
+`WithIdentityUser()` captures the authenticated `HttpContext.User.Identity.Name` at each log call, before queuing, in the reserved `IdentityUser` structured property. Anonymous users, identities without a name, and logs outside a request have no such property. It applies to all categories, including request-completion logs, not just HTTP logs. Authentication must run before the logs whose identity should be captured. Usernames can be sensitive; enable this only when appropriate for your privacy and retention policies.
+
+`WithHttpRequestLogging()` installs an outer ASP.NET Core startup-filter middleware, before the application's configured middleware. It logs one `Information` entry after the application pipeline finishes, with `Method`, `Path` (including path base), `StatusCode`, and `DurationMs`. Carriage returns and line feeds in the method and path are escaped. An exception handler in the application pipeline can set the final status before the entry is written; an unhandled exception is recorded as 500 if the response has not started, or with the already-started status otherwise. Configure authentication and exception handling in the application pipeline, and ensure the request logging category (`ShambleLog.Core.RequestLoggingStartupFilter`) passes logging filters and the database gate. Other startup filters or server-level failures outside this middleware are not observed. Paths can contain sensitive data. Query strings, headers, request bodies and response content are not recorded or read by this feature.
 
 ## Log entry middleware
 

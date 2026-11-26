@@ -4,18 +4,19 @@ using System.Globalization;
 
 namespace ShambleLog.Core;
 
-public sealed class ShambleLogLoggerProvider(LogEntryQueue queue) : ILoggerProvider, ISupportExternalScope
+public sealed class ShambleLogLoggerProvider(LogEntryQueue queue, IEnumerable<IdentityUserEnricher> identityEnrichers) : ILoggerProvider, ISupportExternalScope
 {
     private readonly LogEntryQueue _queue = queue;
+    private readonly IdentityUserEnricher? _identityEnricher = identityEnrichers.FirstOrDefault();
     private IExternalScopeProvider _scopeProvider = new LoggerExternalScopeProvider();
 
-    public ILogger CreateLogger(string categoryName) => new ShambleLogLogger(categoryName, _queue, () => _scopeProvider);
+    public ILogger CreateLogger(string categoryName) => new ShambleLogLogger(categoryName, _queue, () => _scopeProvider, _identityEnricher);
 
     public void SetScopeProvider(IExternalScopeProvider scopeProvider) => _scopeProvider = scopeProvider;
 
     public void Dispose() { }
 
-    private sealed class ShambleLogLogger(string categoryName, LogEntryQueue queue, Func<IExternalScopeProvider> scopeProvider) : ILogger
+    private sealed class ShambleLogLogger(string categoryName, LogEntryQueue queue, Func<IExternalScopeProvider> scopeProvider, IdentityUserEnricher? identityEnricher) : ILogger
     {
         public IDisposable? BeginScope<TState>(TState state) where TState : notnull => scopeProvider().Push(state);
 
@@ -67,6 +68,7 @@ public sealed class ShambleLogLoggerProvider(LogEntryQueue queue) : ILoggerProvi
             if (scopes.Count > 0)
                 entry.Properties["Scopes"] = scopes;
 
+            identityEnricher?.Enrich(entry);
             queue.Enqueue(entry);
         }
 

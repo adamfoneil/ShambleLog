@@ -1,5 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.AspNetCore.Hosting;
 using ShambleLog.Core.Entities;
 
 namespace ShambleLog.Core;
@@ -27,6 +28,33 @@ public sealed class ShambleLogBuilder
     public IServiceCollection Services { get; }
 
     internal IReadOnlyList<Func<LogEntryDelegate, LogEntryDelegate>> Components => _components;
+
+    public ShambleLogBuilder WithRetentionPeriod(RetentionPeriodOptions options)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+        var deleteAfter = options.DeleteAfter;
+        var interval = options.Interval;
+        Services.Configure<RetentionPeriodOptions>(configured =>
+        {
+            configured.DeleteAfter = deleteAfter;
+            configured.Interval = interval;
+        });
+        Services.AddHostedService<RetentionPeriodService>();
+        return this;
+    }
+
+    public ShambleLogBuilder WithIdentityUser()
+    {
+        Services.AddHttpContextAccessor();
+        Services.TryAddSingleton<IdentityUserEnricher>();
+        return this;
+    }
+
+    public ShambleLogBuilder WithHttpRequestLogging()
+    {
+        Services.TryAddEnumerable(ServiceDescriptor.Singleton<IStartupFilter, RequestLoggingStartupFilter>());
+        return this;
+    }
 
     public ShambleLogBuilder Use(Func<LogEntryContext, LogEntryDelegate, Task> middleware)
     {
