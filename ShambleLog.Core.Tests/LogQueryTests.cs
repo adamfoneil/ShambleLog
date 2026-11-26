@@ -180,6 +180,56 @@ public sealed class LogQueryTests
     }
 
     [TestMethod]
+    public async Task EFCoreSummaryQuery_AggregatesCommandsAndFiltersByTimeExpression()
+    {
+        await using var db = CreateContext();
+        var now = DateTime.UtcNow;
+        var first = Entry(1, now.AddMinutes(-10), "first");
+        first.EFCoreEntry = new EFCoreEntry
+        {
+            TargetTables = ["Users", " Orders "],
+            Tags = ["report"],
+            ElapsedMs = 100
+        };
+        var second = Entry(2, now.AddMinutes(-5), "second");
+        second.EFCoreEntry = new EFCoreEntry
+        {
+            TargetTables = ["orders", "users", "USERS"],
+            Tags = ["REPORT"],
+            ElapsedMs = 200
+        };
+        var older = Entry(3, now.AddMinutes(-90), "older");
+        older.EFCoreEntry = new EFCoreEntry { ElapsedMs = 300 };
+        var future = Entry(4, now.AddMinutes(10), "future");
+        future.EFCoreEntry = new EFCoreEntry { TargetTables = ["Future"], ElapsedMs = 400 };
+        db.LogEntries.AddRange(first, second, older, future);
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        var query = new EFCoreSummaryQuery(db);
+        var all = await query.ExecuteAsync();
+        Assert.AreEqual(3, all.Length);
+        Assert.AreEqual(2, all[0].TotalCalls);
+        Assert.AreEqual(150d, all[0].AvgElapsedMs);
+        CollectionAssert.AreEqual(new[] { "Orders", "Users" }, all[0].FromTables);
+        CollectionAssert.AreEqual(new[] { "report" }, all[0].QueryTags);
+        Assert.AreEqual(100L, all[0].MinElapsedMs);
+        Assert.AreEqual(200L, all[0].MaxElapsedMs);
+        Assert.AreEqual(now.AddMinutes(-5), all[0].LatestTimestamp);
+        CollectionAssert.AreEqual(new[] { "Future" }, all[1].FromTables);
+        Assert.AreEqual(400d, all[1].AvgElapsedMs);
+
+        var recent = Assert.ContainsSingle(await query.ExecuteAsync("30m"));
+        Assert.AreEqual(2, recent.TotalCalls);
+        Assert.AreEqual(150d, recent.AvgElapsedMs);
+        await Assert.ThrowsExactlyAsync<FormatException>(() => query.ExecuteAsync("2:1h"));
+
+        using var cancellation = new CancellationTokenSource();
+        cancellation.Cancel();
+        await Assert.ThrowsAsync<OperationCanceledException>(() => query.ExecuteAsync(cancellationToken: cancellation.Token));
+    }
+
+    [TestMethod]
     public async Task PropertyFilterHook_AppliesServerAndClientFiltersToBothQueries()
     {
         await using var db = CreateContext();

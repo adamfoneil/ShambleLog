@@ -1,4 +1,5 @@
-﻿using ShambleLog.Core.Entities;
+﻿using Microsoft.EntityFrameworkCore;
+using ShambleLog.Core.Entities;
 using ShambleLog.Core.Middleware;
 
 namespace ShambleLog.Core.Queries;
@@ -22,8 +23,19 @@ public class EFCoreSummaryQuery(ILoggingDbContext loggingDbContext)
     }
     public async Task<Result[]> ExecuteAsync(string? timeExpression = null, CancellationToken cancellationToken = default)
     {
-        // query the EFCoreEntries table for all rows that match the time expression (if provided)
-        throw new NotImplementedException();
+        var logs = _loggingDbContext.LogEntries.AsNoTracking();
+        if (timeExpression is not null)
+            logs = LogQuery.ParseTimeExpression(logs, timeExpression);
+
+        var joined = from command in _loggingDbContext.EFCoreEntries.AsNoTracking()
+                     join log in logs on command.LogEntryId equals log.Id
+                     select new { Command = command, Log = log };
+        var rows = await joined.ToArrayAsync(cancellationToken);
+        return BuildMetrics(rows.Select(row =>
+        {
+            row.Command.LogEntry = row.Log;
+            return row.Command;
+        })).ToArray();
     }
 
     internal static List<Result> BuildMetrics(IEnumerable<EFCoreEntry> rows) =>
@@ -37,8 +49,8 @@ public class EFCoreSummaryQuery(ILoggingDbContext loggingDbContext)
             })
             .GroupBy(r => new
             {
-                FromTables = ConcatenateForGrouping(r.FromTables),
-                QueryTags = ConcatenateForGrouping(r.QueryTags)
+                FromTables = ConcatenateForGrouping(r.FromTables).ToUpperInvariant(),
+                QueryTags = ConcatenateForGrouping(r.QueryTags).ToUpperInvariant()
             })
             .Select(g => new Result
             {
