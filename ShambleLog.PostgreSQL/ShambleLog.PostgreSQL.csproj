@@ -28,7 +28,9 @@
     <Compile Include="..\ShambleLog.Core\LogEntryQueue.cs" Link="Core\LogEntryQueue.cs" />
     <Compile Include="..\ShambleLog.Core\LogEntryPipeline.cs" Link="Core\LogEntryPipeline.cs" />
     <Compile Include="..\ShambleLog.Core\LogEntryWriter.cs" Link="Core\LogEntryWriter.cs" />
-    <Compile Include="..\ShambleLog.Core\PurgeService.cs" Link="Core\PurgeService.cs" />
+    <Compile Include="..\ShambleLog.Core\RetentionPeriodService.cs" Link="Core\RetentionPeriodService.cs" />
+    <Compile Include="..\ShambleLog.Core\IdentityUserEnricher.cs" Link="Core\IdentityUserEnricher.cs" />
+    <Compile Include="..\ShambleLog.Core\RequestLoggingStartupFilter.cs" Link="Core\RequestLoggingStartupFilter.cs" />
     <Compile Include="..\ShambleLog.Core\ShambleLogLoggerProvider.cs" Link="Core\ShambleLogLoggerProvider.cs" />
     <Compile Include="..\ShambleLog.Core\LoggingBuilderExtensions.cs" Link="Core\LoggingBuilderExtensions.cs" />
     <Compile Include="..\ShambleLog.Core\Registration.cs" Link="Core\Registration.cs" />
@@ -49,6 +51,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
     <PackageReference Include="Microsoft.EntityFrameworkCore" Version="11.0.0" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="11.0.0">
       <PrivateAssets>all</PrivateAssets>

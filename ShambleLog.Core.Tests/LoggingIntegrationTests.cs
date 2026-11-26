@@ -341,14 +341,14 @@ public sealed class LoggingIntegrationTests(TestContext testContext)
 
         var writer = host.Services.GetRequiredService<LogEntryWriter>();
         Assert.AreSame(writer, Assert.ContainsSingle(host.Services.GetServices<IHostedService>().OfType<LogEntryWriter>()));
-        Assert.IsEmpty(host.Services.GetServices<IHostedService>().OfType<PurgeService>());
+        Assert.IsEmpty(host.Services.GetServices<IHostedService>().OfType<RetentionPeriodService>());
     }
 
     [TestMethod]
     [Timeout(10000, CooperativeCancellation = true)]
     public async Task AddShambleLog_WithPurgeOptions_RemovesExpiredEntries()
     {
-        using var host = CreateHost(purgeServiceOptions: new PurgeServiceOptions
+        using var host = CreateHost(retentionPeriodOptions: new RetentionPeriodOptions
         {
             DeleteAfter = TimeSpan.FromDays(1),
             Interval = TimeSpan.FromHours(1)
@@ -384,15 +384,15 @@ public sealed class LoggingIntegrationTests(TestContext testContext)
     [Timeout(10000, CooperativeCancellation = true)]
     public async Task AddShambleLog_MiddlewareOverload_WithPurgeOptions_RemovesExpiredEntries()
     {
-        var options = new PurgeServiceOptions { DeleteAfter = TimeSpan.FromDays(1), Interval = TimeSpan.FromHours(2) };
+        var options = new RetentionPeriodOptions { DeleteAfter = TimeSpan.FromDays(1), Interval = TimeSpan.FromHours(2) };
         using var host = CreateLinkedHost(shamble => shamble.Use<NameDetailMiddleware>(), options, registerTwice: true);
         options.DeleteAfter = TimeSpan.Zero;
         options.Interval = TimeSpan.FromSeconds(1);
 
-        var configured = host.Services.GetRequiredService<IOptions<PurgeServiceOptions>>().Value;
+        var configured = host.Services.GetRequiredService<IOptions<RetentionPeriodOptions>>().Value;
         Assert.AreEqual(TimeSpan.FromDays(1), configured.DeleteAfter);
         Assert.AreEqual(TimeSpan.FromHours(2), configured.Interval);
-        Assert.ContainsSingle(host.Services.GetServices<IHostedService>().OfType<PurgeService>());
+        Assert.ContainsSingle(host.Services.GetServices<IHostedService>().OfType<RetentionPeriodService>());
 
         await using (var scope = host.Services.CreateAsyncScope())
         {
@@ -421,18 +421,18 @@ public sealed class LoggingIntegrationTests(TestContext testContext)
     }
 
     [TestMethod]
-    public void AddShambleLog_MiddlewareOverload_WithoutPurgeOptions_DoesNotRegisterPurgeService()
+    public void AddShambleLog_MiddlewareOverload_WithoutPurgeOptions_DoesNotRegisterRetentionPeriodService()
     {
         using var host = CreateLinkedHost(shamble => shamble.Use<NameDetailMiddleware>());
-        Assert.IsEmpty(host.Services.GetServices<IHostedService>().OfType<PurgeService>());
+        Assert.IsEmpty(host.Services.GetServices<IHostedService>().OfType<RetentionPeriodService>());
     }
 
     [TestMethod]
     [DataRow(false)]
     [DataRow(true)]
-    public void AddShambleLog_MixedOverloads_RegisterOnePurgeService(bool middlewareFirst)
+    public void AddShambleLog_MixedOverloads_RegisterOneRetentionPeriodService(bool middlewareFirst)
     {
-        var purgeOptions = new PurgeServiceOptions
+        var purgeOptions = new RetentionPeriodOptions
         {
             DeleteAfter = TimeSpan.FromDays(7),
             Interval = TimeSpan.FromHours(2)
@@ -442,13 +442,13 @@ public sealed class LoggingIntegrationTests(TestContext testContext)
             {
                 if (middlewareFirst)
                 {
-                    logging.AddShambleLog<LoggingTestDbContext>(shamble => shamble.Use((context, next) => next(context)), purgeOptions);
+                    logging.AddShambleLog<LoggingTestDbContext>(shamble => shamble.Use((context, next) => next(context)).WithRetentionPeriod(purgeOptions));
                     logging.AddShambleLog<LoggingTestDbContext>();
                 }
                 else
                 {
                     logging.AddShambleLog<LoggingTestDbContext>();
-                    logging.AddShambleLog<LoggingTestDbContext>(shamble => shamble.Use((context, next) => next(context)), purgeOptions);
+                    logging.AddShambleLog<LoggingTestDbContext>(shamble => shamble.Use((context, next) => next(context)).WithRetentionPeriod(purgeOptions));
                 }
             })
             .ConfigureServices(services =>
@@ -460,10 +460,10 @@ public sealed class LoggingIntegrationTests(TestContext testContext)
         purgeOptions.DeleteAfter = TimeSpan.Zero;
         purgeOptions.Interval = TimeSpan.FromSeconds(1);
 
-        var configured = host.Services.GetRequiredService<IOptions<PurgeServiceOptions>>().Value;
+        var configured = host.Services.GetRequiredService<IOptions<RetentionPeriodOptions>>().Value;
         Assert.AreEqual(TimeSpan.FromDays(7), configured.DeleteAfter);
         Assert.AreEqual(TimeSpan.FromHours(2), configured.Interval);
-        Assert.ContainsSingle(host.Services.GetServices<IHostedService>().OfType<PurgeService>());
+        Assert.ContainsSingle(host.Services.GetServices<IHostedService>().OfType<RetentionPeriodService>());
         Assert.ContainsSingle(host.Services.GetServices<IHostedService>().OfType<LogEntryWriter>());
         using var scope = host.Services.CreateScope();
         Assert.AreSame(scope.ServiceProvider.GetRequiredService<LoggingTestDbContext>(),
@@ -638,7 +638,7 @@ public sealed class LoggingIntegrationTests(TestContext testContext)
     }
 
     private static IHost CreateLinkedHost(Action<ShambleLogBuilder> configure,
-        PurgeServiceOptions? purgeServiceOptions = null, bool registerTwice = false)
+        RetentionPeriodOptions? retentionPeriodOptions = null, bool registerTwice = false)
     {
         var databaseRoot = new InMemoryDatabaseRoot();
         return new HostBuilder()
@@ -646,9 +646,14 @@ public sealed class LoggingIntegrationTests(TestContext testContext)
             {
                 logging.ClearProviders();
                 logging.SetMinimumLevel(LogLevel.Warning);
-                logging.AddShambleLog<LinkedLoggingDbContext>(configure, purgeServiceOptions);
+                logging.AddShambleLog<LinkedLoggingDbContext>(shamble =>
+                {
+                    configure(shamble);
+                    if (retentionPeriodOptions is not null)
+                        shamble.WithRetentionPeriod(retentionPeriodOptions);
+                });
                 if (registerTwice)
-                    logging.AddShambleLog<LinkedLoggingDbContext>(purgeServiceOptions);
+                    logging.AddShambleLog<LinkedLoggingDbContext>();
             })
             .ConfigureServices(services =>
             {
@@ -663,7 +668,7 @@ public sealed class LoggingIntegrationTests(TestContext testContext)
     private static IHost CreateHost(
         bool failWrites = false,
         bool registerTwice = false,
-        PurgeServiceOptions? purgeServiceOptions = null)
+        RetentionPeriodOptions? retentionPeriodOptions = null)
     {
         var databaseRoot = new InMemoryDatabaseRoot();
         return new HostBuilder()
@@ -671,9 +676,13 @@ public sealed class LoggingIntegrationTests(TestContext testContext)
             {
                 logging.ClearProviders();
                 logging.SetMinimumLevel(LogLevel.Warning);
-                logging.AddShambleLog<LoggingTestDbContext>(purgeServiceOptions);
+                logging.AddShambleLog<LoggingTestDbContext>(shamble =>
+                {
+                    if (retentionPeriodOptions is not null)
+                        shamble.WithRetentionPeriod(retentionPeriodOptions);
+                });
                 if (registerTwice)
-                    logging.AddShambleLog<LoggingTestDbContext>(purgeServiceOptions);
+                    logging.AddShambleLog<LoggingTestDbContext>();
             })
             .ConfigureServices(services =>
             {

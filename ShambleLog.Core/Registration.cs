@@ -10,7 +10,6 @@ internal static class Registration
 {
     public static ILoggingBuilder Add<TContext>(
         ILoggingBuilder builder,
-        PurgeServiceOptions? purgeServiceOptions,
         Action<ShambleLogBuilder>? configure)
         where TContext : DbContext, ILoggingDbContext
     {
@@ -32,18 +31,6 @@ internal static class Registration
             configure(shambleBuilder);
             foreach (var component in shambleBuilder.Components)
                 builder.Services.AddSingleton(new LogEntryPipelineComponent(component));
-        }
-
-        if (purgeServiceOptions is not null)
-        {
-            var deleteAfter = purgeServiceOptions.DeleteAfter;
-            var interval = purgeServiceOptions.Interval;
-            builder.Services.Configure<PurgeServiceOptions>(options =>
-            {
-                options.DeleteAfter = deleteAfter;
-                options.Interval = interval;
-            });
-            builder.Services.AddHostedService<PurgeService>();
         }
 
         return builder;

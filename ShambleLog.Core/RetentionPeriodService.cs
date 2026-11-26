@@ -6,20 +6,20 @@ using ShambleLog.Core.Entities;
 
 namespace ShambleLog.Core;
 
-public class PurgeServiceOptions
+public class RetentionPeriodOptions
 {
     public TimeSpan DeleteAfter { get; set; }
     public TimeSpan Interval { get; set; } = TimeSpan.FromHours(1);
 }
 
-public class PurgeService(
-    ILogger<PurgeService> logger,
+public class RetentionPeriodService(
+    ILogger<RetentionPeriodService> logger,
     IServiceScopeFactory scopeFactory,
-    IOptions<PurgeServiceOptions> options) : BackgroundService
+    IOptions<RetentionPeriodOptions> options) : BackgroundService
 {
-    private readonly ILogger<PurgeService> _logger = logger;
+    private readonly ILogger<RetentionPeriodService> _logger = logger;
     private readonly IServiceScopeFactory _scopeFactory = scopeFactory;
-    private readonly PurgeServiceOptions _options = options.Value;
+    private readonly RetentionPeriodOptions _options = options.Value;
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
