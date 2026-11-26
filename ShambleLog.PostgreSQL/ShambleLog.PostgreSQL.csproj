@@ -7,7 +7,7 @@
     <GeneratePackageOnBuild>True</GeneratePackageOnBuild>
     <PackageId>ShambleLog</PackageId>
     <Title>ShambleLog</Title>
-    <Version>0.9.0-alpha</Version>
+    <Version>0.9.1-alpha</Version>
     <Authors>Adam O'Neil</Authors>
     <Company>Adam O'Neil</Company>
     <Description>An EF Core-based logger targeting Postgres, ILogger&lt;T&gt; compatible</Description>
@@ -18,32 +18,6 @@
     <PackageTags>logging; efcore; postgres</PackageTags>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
   </PropertyGroup>
-
-  <ItemGroup>
-    <Compile Include="..\ShambleLog.Core\Entities\CategoryLevel.cs" Link="Core\Entities\CategoryLevel.cs" />
-    <Compile Include="..\ShambleLog.Core\Entities\EFCoreEntry.cs" Link="Core\Entities\EFCoreEntry.cs" />
-    <Compile Include="..\ShambleLog.Core\Entities\LogEntry.cs" Link="Core\Entities\LogEntry.cs" />
-    <Compile Include="..\ShambleLog.Core\CategoryLevelInitializer.cs" Link="Core\CategoryLevelInitializer.cs" />
-    <Compile Include="..\ShambleLog.Core\ILoggingDbContext.cs" Link="Core\ILoggingDbContext.cs" />
-    <Compile Include="..\ShambleLog.Core\LogEntryQueue.cs" Link="Core\LogEntryQueue.cs" />
-    <Compile Include="..\ShambleLog.Core\LogEntryPipeline.cs" Link="Core\LogEntryPipeline.cs" />
-    <Compile Include="..\ShambleLog.Core\LogEntryWriter.cs" Link="Core\LogEntryWriter.cs" />
-    <Compile Include="..\ShambleLog.Core\SuppressedCategoryTracker.cs" Link="Core\SuppressedCategoryTracker.cs" />
-    <Compile Include="..\ShambleLog.Core\RetentionPeriodService.cs" Link="Core\RetentionPeriodService.cs" />
-    <Compile Include="..\ShambleLog.Core\IdentityUserEnricher.cs" Link="Core\IdentityUserEnricher.cs" />
-    <Compile Include="..\ShambleLog.Core\RequestLoggingStartupFilter.cs" Link="Core\RequestLoggingStartupFilter.cs" />
-    <Compile Include="..\ShambleLog.Core\ShambleLogLoggerProvider.cs" Link="Core\ShambleLogLoggerProvider.cs" />
-    <Compile Include="..\ShambleLog.Core\LoggingBuilderExtensions.cs" Link="Core\LoggingBuilderExtensions.cs" />
-    <Compile Include="..\ShambleLog.Core\Registration.cs" Link="Core\Registration.cs" />
-    <Compile Include="..\ShambleLog.Core\Middleware\EFCoreMiddleware.cs" Link="Core\Middleware\EFCoreMiddleware.cs" />
-    <Compile Include="..\ShambleLog.Core\Middleware\EFCoreMiddlewareExtensions.cs" Link="Core\Middleware\EFCoreMiddlewareExtensions.cs" />
-    <Compile Include="..\ShambleLog.Core\Middleware\IEFCoreLoggingDbContext.cs" Link="Core\Middleware\IEFCoreLoggingDbContext.cs" />
-    <Compile Include="..\ShambleLog.Core\Queries\LogQuery.cs" Link="Core\Queries\LogQuery.cs" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <Folder Include="Core\Entities\" />
-  </ItemGroup>
 
   <ItemGroup>
     <None Include="..\README.md">
@@ -60,6 +34,7 @@
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
     <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="11.0.0" />
+    <PackageReference Include="ShambleLog.Core" Version="0.9.1-alpha" />
   </ItemGroup>
 
 </Project>
