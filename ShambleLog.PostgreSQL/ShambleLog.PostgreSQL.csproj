@@ -28,6 +28,7 @@
     <Compile Include="..\ShambleLog.Core\LogEntryQueue.cs" Link="Core\LogEntryQueue.cs" />
     <Compile Include="..\ShambleLog.Core\LogEntryPipeline.cs" Link="Core\LogEntryPipeline.cs" />
     <Compile Include="..\ShambleLog.Core\LogEntryWriter.cs" Link="Core\LogEntryWriter.cs" />
+    <Compile Include="..\ShambleLog.Core\SuppressedCategoryTracker.cs" Link="Core\SuppressedCategoryTracker.cs" />
     <Compile Include="..\ShambleLog.Core\RetentionPeriodService.cs" Link="Core\RetentionPeriodService.cs" />
     <Compile Include="..\ShambleLog.Core\IdentityUserEnricher.cs" Link="Core\IdentityUserEnricher.cs" />
     <Compile Include="..\ShambleLog.Core\RequestLoggingStartupFilter.cs" Link="Core\RequestLoggingStartupFilter.cs" />
