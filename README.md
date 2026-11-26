@@ -173,6 +173,19 @@ In `ShambleLog.Core`, `CategorySummaryQuery.ExecuteAsync` returns each category'
 
 The `EFCoreCriteria` overload requires `IEFCoreLoggingDbContext`; it returns command rows with their log entries and supports exact table and tag matches, command text substring, and minimum elapsed milliseconds. Pass optional `Criteria` to filter their log entries as well.
 
+## Demo database
+
+Demo uses PostgreSQL with `ConnectionStrings:Local` in `Demo\appsettings.json`. Runtime registration provides a singleton `IDbContextFactory<ApplicationDbContext>`; dispose contexts created by the factory after use. The design-time factory reads the `appsettings.json` copied alongside the Demo assembly and requires the same connection-string key. It does not load environment-specific settings or environment-variable overrides.
+
+With `dotnet-ef` version 11.0.0 installed, run from the solution directory:
+
+```powershell
+dotnet ef migrations add InitialCreate --project Demo --startup-project Demo --context ApplicationDbContext
+dotnet ef database update --project Demo --startup-project Demo --context ApplicationDbContext
+```
+
+Creating migrations does not require a live database; applying them does. Keep database credentials out of source control.
+
 ## Publishing ShambleLog.Core
 
 Add a NuGet.org API key authorized to push `ShambleLog.Core` as the repository Actions secret `NUGET_API_KEY`. Update the `Version` in `ShambleLog.Core\ShambleLog.Core.csproj` to an unpublished version and commit it. In GitHub Actions, manually run **Publish ShambleLog.Core** on the desired branch or tag. The workflow tests, packs, and publishes the version in that revision; publishing an existing version fails.

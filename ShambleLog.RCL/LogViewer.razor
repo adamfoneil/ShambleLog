@@ -3,7 +3,7 @@
 @using ShambleLog.Core.Queries
 
 <div class="log-viewer">
-    <section>
+    <section class="me-2">
         <RadzenAccordion>
             <Items>
                 <RadzenAccordionItem Text="Categories" Selected="true">
@@ -16,7 +16,7 @@
         </RadzenAccordion>
     </section>
 
-    <section>
+    <section class="ms-2">
         <FilterBar Criteria="_criteria" EFCoreCriteria="_efCoreCriteria" />
         @*main table*@
     </section>

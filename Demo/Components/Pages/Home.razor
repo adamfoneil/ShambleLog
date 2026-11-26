@@ -1,7 +1,10 @@
 ﻿@page "/"
+@using ShambleLog.Core.Queries
+@using ShambleLog.RCL
+@inject LogQuery LogQuery
+@inject CategorySummaryQuery CategorySummaryQuery
+@inject EFCoreSummaryQuery EFCoreSummaryQuery
 
 <PageTitle>Home</PageTitle>
 
-<h1>Hello, world!</h1>
-
-Welcome to your new app.
+<LogViewer CategorySummaryQuery="CategorySummaryQuery" EFCoreSummaryQuery="EFCoreSummaryQuery" LogQuery="LogQuery" />
