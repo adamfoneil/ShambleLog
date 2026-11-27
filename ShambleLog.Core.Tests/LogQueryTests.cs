@@ -113,8 +113,73 @@ public sealed class LogQueryTests
         CollectionAssert.AreEqual(new long[] { 2 }, LogQuery.ParseTimeExpression(entries, "1:2h:asc").Select(row => row.Id).ToArray());
         CollectionAssert.AreEqual(new long[] { 3, 2, 1, 4 }, LogQuery.ParseTimeExpression(entries, "asc").Select(row => row.Id).ToArray());
         CollectionAssert.AreEqual(new long[] { 4, 1, 2, 3 }, LogQuery.ParseTimeExpression(entries, "").Select(row => row.Id).ToArray());
-        foreach (var invalid in new[] { "2:1h", "-1h", "1x", ":asc", "1:asc:asc", "999999999999999999999999999d" })
-            Assert.ThrowsExactly<FormatException>(() => LogQuery.ParseTimeExpression(entries, invalid));
+        foreach (var invalid in new[] { "2:1h", "-1h", "1x", ":asc", "1:asc:asc", "999999999999999999999999999d",
+                     "930", "09300", "2400", "0960", "0930:2400", "1330:0930", "0930:930", "0930:1330:asc:asc" })
+            Assert.ThrowsExactly<FormatException>(() => LogQuery.ParseTimeExpression(entries, invalid), invalid);
+    }
+
+    [TestMethod]
+    public async Task LogQuery_ClockTimesUseSelectedDateAndInclusiveBounds()
+    {
+        await using var db = CreateContext();
+        var date = new DateTime(2020, 1, 15, 0, 0, 0, DateTimeKind.Utc);
+        var before = Entry(1, date.AddHours(9).AddMinutes(29).AddSeconds(59), "before");
+        var start = Entry(2, date.AddHours(9).AddMinutes(30), "start");
+        var middle = Entry(3, date.AddHours(12), "middle");
+        var end = Entry(4, date.AddHours(13).AddMinutes(30), "end");
+        var after = Entry(5, date.AddHours(13).AddMinutes(30).AddTicks(1), "after");
+        var nextDay = Entry(6, date.AddDays(1).AddHours(10), "next day");
+        foreach (var entry in new[] { before, start, middle, end, after, nextDay })
+            entry.EFCoreEntry = new EFCoreEntry { CommandText = entry.Message };
+        db.LogEntries.AddRange(before, start, middle, end, after, nextDay);
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        var query = new LogQuery(db);
+        var criteria = new LogQuery.Criteria { Date = DateOnly.FromDateTime(date), TimeExpression = "0930:1330" };
+        CollectionAssert.AreEqual(new long[] { 4, 3, 2 }, (await query.ExecuteAsync(criteria)).Select(row => row.Id).ToArray());
+        criteria.TimeExpression = "0930:1330:ASC";
+        CollectionAssert.AreEqual(new long[] { 2, 3, 4 }, (await query.ExecuteAsync(criteria)).Select(row => row.Id).ToArray());
+        CollectionAssert.AreEqual(new long[] { 2, 3, 4 }, (await query.ExecuteAsync(new LogQuery.EFCoreCriteria(), criteria)).Select(row => row.LogEntryId).ToArray());
+        criteria.TimeExpression = "0930";
+        CollectionAssert.AreEqual(new long[] { 5, 4, 3, 2 }, (await query.ExecuteAsync(criteria)).Select(row => row.Id).ToArray());
+        criteria.TimeExpression = "0930:0930";
+        CollectionAssert.AreEqual(new long[] { 2 }, (await query.ExecuteAsync(criteria)).Select(row => row.Id).ToArray());
+    }
+
+    [TestMethod]
+    public void ParseTimeExpression_ClockTimesDefaultToTodayAndStopAtNow()
+    {
+        var now = DateTime.UtcNow;
+        var today = now.Date;
+        var entries = new[]
+        {
+            Entry(1, today.AddDays(-1), "yesterday"),
+            Entry(2, today, "midnight"),
+            Entry(3, now.AddDays(1), "future")
+        }.AsQueryable();
+        CollectionAssert.AreEqual(new long[] { 2 }, LogQuery.ParseTimeExpression(entries, "0000").Select(row => row.Id).ToArray());
+        CollectionAssert.AreEqual(new long[] { 2 }, LogQuery.ParseTimeExpression(entries, "0000:2359:asc").Select(row => row.Id).ToArray());
+    }
+
+    [TestMethod]
+    public async Task SummaryQueries_ClockTimesUseCurrentUtcDate()
+    {
+        await using var db = CreateContext();
+        var today = DateTime.UtcNow.Date;
+        var current = Entry(1, today, "current");
+        var previous = Entry(2, today.AddDays(-1), "previous");
+        current.EFCoreEntry = new EFCoreEntry { ElapsedMs = 100 };
+        previous.EFCoreEntry = new EFCoreEntry { ElapsedMs = 200 };
+        db.LogEntries.AddRange(current, previous);
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        var category = Assert.ContainsSingle(await new CategorySummaryQuery(db).ExecuteAsync("0000:2359"));
+        Assert.AreEqual(1, category.LevelCounts[LogLevel.Warning]);
+        var commands = Assert.ContainsSingle(await new EFCoreSummaryQuery(db).ExecuteAsync("0000:2359"));
+        Assert.AreEqual(1, commands.TotalCalls);
+        Assert.AreEqual(100d, commands.AvgElapsedMs);
     }
 
     [TestMethod]

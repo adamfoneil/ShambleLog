@@ -14,9 +14,10 @@ public abstract class LogQuery(ILoggingDbContext loggingDbContext)
 
     public class Criteria
     {
-        public DateOnly Date { get; set; }
+        public DateOnly Date { get; set; } = DateOnly.FromDateTime(DateTime.UtcNow);
         /// <summary>
         /// Time expression e.g. "30m" (last 30 min) or "1:2h" (between 1 and 2 hours ago).
+        /// nnnn:nnnn defines an exact range (e.g. 0930:1330 for 9:30am to 1:30pm), and nnnn alone defines a range from nnnn to now (e.g. 0930 for 9:30am to now).
         /// Null means no time restriction within the selected Date.
         /// Can also use suffix ":asc" or "asc" by itself to sort results ascending -- used with TraceId/RequestId searching
         /// because the default sort is descending by timestamp, but you may want to see the earliest log entries first for a given TraceId/RequestId.
@@ -58,7 +59,10 @@ public abstract class LogQuery(ILoggingDbContext loggingDbContext)
         return clientFilter is null ? rows : [.. rows.Where(clientFilter)];
     }
 
-    public static IQueryable<LogEntry> ParseTimeExpression(IQueryable<LogEntry> query, string timeExpression)
+    public static IQueryable<LogEntry> ParseTimeExpression(IQueryable<LogEntry> query, string timeExpression) =>
+        ParseTimeExpression(query, timeExpression, null);
+
+    private static IQueryable<LogEntry> ParseTimeExpression(IQueryable<LogEntry> query, string timeExpression, DateOnly? date)
     {
         ArgumentNullException.ThrowIfNull(query);
         ArgumentNullException.ThrowIfNull(timeExpression);
@@ -75,43 +79,68 @@ public abstract class LogQuery(ILoggingDbContext loggingDbContext)
 
         if (expression.Length > 0)
         {
-            var match = Regex.Match(expression, @"^(\d+)(?::(\d+))?([smhd])$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
-            if (!match.Success ||
-                !double.TryParse(match.Groups[1].Value, NumberStyles.None, CultureInfo.InvariantCulture, out var first) ||
-                (match.Groups[2].Success && !double.TryParse(match.Groups[2].Value, NumberStyles.None, CultureInfo.InvariantCulture, out _)))
-                throw new FormatException("Invalid time expression.");
-
-            var second = match.Groups[2].Success
-                ? double.Parse(match.Groups[2].Value, NumberStyles.None, CultureInfo.InvariantCulture)
-                : 0;
-            if (match.Groups[2].Success && first > second)
-                throw new FormatException("The start of a time range must not exceed its end.");
-
-            var multiplier = char.ToLowerInvariant(match.Groups[3].Value[0]) switch
+            var clockMatch = Regex.Match(expression, @"^([0-9]{4})(?::([0-9]{4}))?$", RegexOptions.CultureInvariant);
+            if (clockMatch.Success)
             {
-                's' => 1d,
-                'm' => 60d,
-                'h' => 3600d,
-                'd' => 86400d,
-                _ => throw new FormatException("Invalid time expression.")
-            };
-            var now = DateTime.UtcNow;
-            var earliestSeconds = (match.Groups[2].Success ? second : first) * multiplier;
-            var latestSeconds = first * multiplier;
-            if (!double.IsFinite(earliestSeconds) || earliestSeconds > (now - DateTime.MinValue).TotalSeconds)
-                throw new FormatException("Time expression is out of range.");
-            var earliest = now.AddSeconds(-earliestSeconds);
-            query = query.Where(entry => entry.Timestamp >= earliest && entry.Timestamp <= now);
-            if (match.Groups[2].Success)
+                var startTime = ParseClockTime(clockMatch.Groups[1].Value);
+                var now = DateTime.UtcNow;
+                var selectedDate = date ?? DateOnly.FromDateTime(now);
+                var start = selectedDate.ToDateTime(startTime, DateTimeKind.Utc);
+                var end = clockMatch.Groups[2].Success
+                    ? selectedDate.ToDateTime(ParseClockTime(clockMatch.Groups[2].Value), DateTimeKind.Utc)
+                    : now;
+                if (clockMatch.Groups[2].Success && start > end)
+                    throw new FormatException("The start of a time range must not exceed its end.");
+                query = query.Where(entry => entry.Timestamp >= start && entry.Timestamp <= end);
+            }
+            else
             {
-                var latest = now.AddSeconds(-latestSeconds);
-                query = query.Where(entry => entry.Timestamp <= latest);
+                var match = Regex.Match(expression, @"^(\d+)(?::(\d+))?([smhd])$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+                if (!match.Success ||
+                    !double.TryParse(match.Groups[1].Value, NumberStyles.None, CultureInfo.InvariantCulture, out var first) ||
+                    (match.Groups[2].Success && !double.TryParse(match.Groups[2].Value, NumberStyles.None, CultureInfo.InvariantCulture, out _)))
+                    throw new FormatException("Invalid time expression.");
+
+                var second = match.Groups[2].Success
+                    ? double.Parse(match.Groups[2].Value, NumberStyles.None, CultureInfo.InvariantCulture)
+                    : 0;
+                if (match.Groups[2].Success && first > second)
+                    throw new FormatException("The start of a time range must not exceed its end.");
+
+                var multiplier = char.ToLowerInvariant(match.Groups[3].Value[0]) switch
+                {
+                    's' => 1d,
+                    'm' => 60d,
+                    'h' => 3600d,
+                    'd' => 86400d,
+                    _ => throw new FormatException("Invalid time expression.")
+                };
+                var now = DateTime.UtcNow;
+                var earliestSeconds = (match.Groups[2].Success ? second : first) * multiplier;
+                var latestSeconds = first * multiplier;
+                if (!double.IsFinite(earliestSeconds) || earliestSeconds > (now - DateTime.MinValue).TotalSeconds)
+                    throw new FormatException("Time expression is out of range.");
+                var earliest = now.AddSeconds(-earliestSeconds);
+                query = query.Where(entry => entry.Timestamp >= earliest && entry.Timestamp <= now);
+                if (match.Groups[2].Success)
+                {
+                    var latest = now.AddSeconds(-latestSeconds);
+                    query = query.Where(entry => entry.Timestamp <= latest);
+                }
             }
         }
 
         return ascending ? query.OrderBy(entry => entry.Timestamp) : query.OrderByDescending(entry => entry.Timestamp);
     }
-    
+
+    private static TimeOnly ParseClockTime(string value)
+    {
+        if (!TimeOnly.TryParseExact(value, "HHmm", CultureInfo.InvariantCulture, DateTimeStyles.None, out var time) ||
+            time.ToString("HHmm", CultureInfo.InvariantCulture) != value)
+            throw new FormatException("Invalid time expression.");
+        return time;
+    }
+
     /// <summary>
     /// queries EFCoreEntries table joined to main LogEntry table
     /// </summary>
@@ -166,7 +195,7 @@ public abstract class LogQuery(ILoggingDbContext loggingDbContext)
             query = query.Where(entry => entry.Template.Contains(criteria.TemplateContains));
         if (!string.IsNullOrWhiteSpace(criteria.MessageContains))
             query = query.Where(entry => entry.Message.Contains(criteria.MessageContains));
-        return ParseTimeExpression(query, criteria.TimeExpression ?? "");
+        return ParseTimeExpression(query, criteria.TimeExpression ?? "", criteria.Date);
     }
 
     private static bool IsAscending(string? expression) =>
