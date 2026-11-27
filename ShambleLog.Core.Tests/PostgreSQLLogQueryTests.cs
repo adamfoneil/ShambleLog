@@ -31,6 +31,38 @@ public sealed class PostgreSQLLogQueryTests
         Assert.IsNull(clientFilter);
     }
 
+    [TestMethod]
+    public async Task ExecuteAsync_TranslatesShorthandToStringContainment()
+    {
+        await using var db = new PostgreSQLContext(new DbContextOptionsBuilder<PostgreSQLContext>()
+            .UseNpgsql("Host=localhost;Database=unused;Username=unused").Options);
+        var query = new CapturingPostgreSQLLogQuery(db);
+        var criteria = new ShambleLog.Core.Queries.LogQuery.Criteria { PropertiesContain = "UserId:123, Method:-Get" };
+
+        await Assert.ThrowsExactlyAsync<FilterCapturedException>(() => query.ExecuteAsync(criteria, 0, 10));
+        StringAssert.Contains(query.Sql!, "@>");
+        StringAssert.Contains(query.Sql!, "UserId");
+        StringAssert.Contains(query.Sql!, "123");
+        StringAssert.Contains(query.Sql!, "NOT (");
+        StringAssert.Contains(query.Sql!, "Method");
+        StringAssert.Contains(query.Sql!, "Get");
+    }
+
+    private sealed class FilterCapturedException : Exception;
+
+    private sealed class CapturingPostgreSQLLogQuery(ILoggingDbContext db) : PostgreSQLLogQuery(db)
+    {
+        public string? Sql { get; private set; }
+
+        protected override (IQueryable<LogEntry> Query, Func<LogEntry, bool>? ClientFilter) FilterProperties(
+            IQueryable<LogEntry> query, (string Key, JsonElement Value, bool Exclude)[] properties)
+        {
+            Assert.AreEqual(JsonValueKind.String, properties[0].Value.ValueKind);
+            Sql = base.FilterProperties(query, properties).Query.ToQueryString();
+            throw new FilterCapturedException();
+        }
+    }
+
     private sealed class ExposedPostgreSQLLogQuery(ILoggingDbContext db) : PostgreSQLLogQuery(db)
     {
         public (IQueryable<LogEntry> Query, Func<LogEntry, bool>? ClientFilter) Apply(

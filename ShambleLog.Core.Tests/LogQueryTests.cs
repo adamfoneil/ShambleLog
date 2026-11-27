@@ -137,32 +137,47 @@ public sealed class LogQueryTests
     }
 
     [TestMethod]
-    public async Task LogQuery_PropertiesMatchJsonValuesAndExclusions()
+    public async Task LogQuery_PropertiesMatchShorthandStringValuesAndExclusions()
     {
         await using var db = CreateContext();
         var date = new DateTime(2026, 1, 15, 0, 0, 0, DateTimeKind.Utc);
         var first = Entry(1, date, "first");
-        first.Properties = new() { ["TraceId"] = "abc", ["Count"] = 3, ["Method"] = "Get", ["Scopes"] = new[] { "request", "transaction" }, ["Detail"] = new { Name = "test", Extra = 1 } };
+        first.Properties = new() { ["UserId"] = 123, ["TraceId"] = "abc", ["Method"] = "Get" };
         var second = Entry(2, date.AddHours(1), "second");
-        second.Properties = new() { ["TraceId"] = "abc", ["Count"] = 3, ["Method"] = "Post" };
+        second.Properties = new() { ["UserId"] = "123", ["TraceId"] = "abc", ["Method"] = "Post", ["Message"] = "hello, \"world\": \\path" };
         var missing = Entry(3, date.AddHours(2), "missing");
-        missing.Properties = new() { ["TraceId"] = "abc", ["Count"] = 3 };
+        missing.Properties = new() { ["UserId"] = "123", ["TraceId"] = "abc" };
         db.LogEntries.AddRange(first, second, missing);
         await db.SaveChangesAsync();
         db.ChangeTracker.Clear();
+        var query = new LogQuery(db);
         var criteria = new LogQuery.Criteria
         {
             Date = DateOnly.FromDateTime(date),
-            PropertiesContain = """{"TraceId":"abc","Count":3,"Method":"-Get"}"""
+            PropertiesContain = " UserId:123, TraceId:abc, Method:-Get "
         };
-        var rows = await new LogQuery(db).ExecuteAsync(criteria, 0, int.MaxValue);
-        CollectionAssert.AreEqual(new long[] { 3, 2 }, rows.Select(row => row.Id).ToArray());
-        criteria.PropertiesContain = """{"Count":"3"}""";
-        Assert.IsEmpty(await new LogQuery(db).ExecuteAsync(criteria, 0, int.MaxValue));
-        criteria.PropertiesContain = """{"Scopes":["request"],"Detail":{"Name":"test"}}""";
-        Assert.AreEqual(1L, Assert.ContainsSingle(await new LogQuery(db).ExecuteAsync(criteria, 0, int.MaxValue)).Id);
-        criteria.PropertiesContain = "[]";
-        await Assert.ThrowsExactlyAsync<FormatException>(() => new LogQuery(db).ExecuteAsync(criteria, 0, int.MaxValue));
+        CollectionAssert.AreEqual(new long[] { 3, 2 }, (await query.ExecuteAsync(criteria, 0, int.MaxValue)).Select(row => row.Id).ToArray());
+        criteria.PropertiesContain = "Message:\"hello, \\\"world\\\": \\\\path\", UserId:123";
+        Assert.AreEqual(2L, Assert.ContainsSingle(await query.ExecuteAsync(criteria, 0, int.MaxValue)).Id);
+        criteria.PropertiesContain = "UserId:123";
+        CollectionAssert.AreEqual(new long[] { 3, 2 }, (await query.ExecuteAsync(criteria, 0, int.MaxValue)).Select(row => row.Id).ToArray());
+        criteria.PropertiesContain = "  ";
+        Assert.AreEqual(3, (await query.ExecuteAsync(criteria, 0, int.MaxValue)).Length);
+    }
+
+    [TestMethod]
+    public async Task LogQuery_RejectsMalformedPropertyFiltersInBothQueryTypes()
+    {
+        await using var db = CreateContext();
+        var query = new LogQuery(db);
+        foreach (var expression in new[] { "UserId", ":123", "UserId:", "UserId:123,", "UserId:123,,Method:Get", "UserId:\"unterminated", "UserId:\"bad\\q\"", "UserId:\"ok\"extra", """{"UserId":"123"}""" })
+        {
+            var criteria = new LogQuery.Criteria { PropertiesContain = expression };
+            await Assert.ThrowsExactlyAsync<FormatException>(() => query.ExecuteAsync(criteria, 0, 10), expression);
+            await Assert.ThrowsExactlyAsync<FormatException>(() => query.ExecuteAsync(new LogQuery.EFCoreCriteria(), 0, 10, criteria), expression);
+        }
+        var valid = new LogQuery.Criteria { PropertiesContain = "Empty:\"\", Value:\"-x\", Path:\"C:\\\\test\"" };
+        Assert.IsEmpty(await query.ExecuteAsync(valid, 0, 10));
     }
 
     [TestMethod]
@@ -185,7 +200,7 @@ public sealed class LogQueryTests
         var rows = await query.ExecuteAsync(commandCriteria, 0, int.MaxValue, criteria);
         CollectionAssert.AreEqual(new long[] { 1, 2 }, rows.Select(row => row.LogEntryId).ToArray());
         Assert.AreEqual("first", rows[0].LogEntry.Message);
-        criteria.PropertiesContain = """{"TraceId":"abc"}""";
+        criteria.PropertiesContain = "TraceId:abc";
         Assert.AreEqual(1L, Assert.ContainsSingle(await query.ExecuteAsync(commandCriteria, 0, int.MaxValue, criteria)).LogEntryId);
         commandCriteria.MinElapsedMs = 101;
         Assert.IsEmpty(await query.ExecuteAsync(commandCriteria, 0, int.MaxValue, criteria));
@@ -408,7 +423,7 @@ public sealed class LogQueryTests
         var criteria = new ShambleLog.Core.Queries.LogQuery.Criteria
         {
             Date = DateOnly.FromDateTime(date),
-            PropertiesContain = """{"Limit":2}"""
+            PropertiesContain = "Limit:2"
         };
         CollectionAssert.AreEqual(new long[] { 1 }, (await query.ExecuteAsync(criteria, 0, int.MaxValue)).Select(row => row.Id).ToArray());
         CollectionAssert.AreEqual(new long[] { 1 }, (await query.ExecuteAsync(new ShambleLog.Core.Queries.LogQuery.EFCoreCriteria(), 0, int.MaxValue, criteria))
@@ -420,7 +435,7 @@ public sealed class LogQueryTests
         protected override (IQueryable<LogEntry> Query, Func<LogEntry, bool>? ClientFilter) FilterProperties(
             IQueryable<LogEntry> query, (string Key, JsonElement Value, bool Exclude)[] properties)
         {
-            var limit = properties.Single(property => property.Key == "Limit").Value.GetInt64();
+            var limit = long.Parse(properties.Single(property => property.Key == "Limit").Value.GetString()!);
             return (query.Where(entry => entry.Message == "keep"), entry => entry.Id < limit);
         }
     }
