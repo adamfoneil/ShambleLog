@@ -31,9 +31,8 @@ public abstract class LogQuery(ILoggingDbContext loggingDbContext)
         /// <summary>Substring filter; prefix with ! or - to exclude matches.</summary>
         public string? MessageContains { get; set; }
         /// <summary>
-        /// Parses to a dictionary that affects where clause against the JSONB properties column, e.g. {"UserId": "123"}.
-        /// Prefix a string property value with "-" to exclude matching logs, e.g. {"Method": "-GetLogEntriesAfterIdAsync"}.
-        /// This is where you'd search for a specific TraceId or RequestId, e.g. {"TraceId": "abc123"}.
+        /// Comma-separated property and string value pairs, e.g. UserId:123, Method:-Get.
+        /// Prefix a value with "-" to exclude matching logs. Quote values containing commas and escape quotes with a backslash.
         /// </summary>
         public string? PropertiesContain { get; set; }
     }
@@ -227,16 +226,73 @@ public abstract class LogQuery(ILoggingDbContext loggingDbContext)
     {
         if (string.IsNullOrWhiteSpace(expression))
             return [];
-        using var document = JsonDocument.Parse(expression);
-        if (document.RootElement.ValueKind != JsonValueKind.Object)
-            throw new FormatException("Properties must be a JSON object.");
-        return [.. document.RootElement.EnumerateObject().Select(property =>
+
+        const string error = "Use comma-separated property:value pairs, for example UserId:123, Method:-Get. Quote values containing commas.";
+        var properties = new List<(string Key, JsonElement Value, bool Exclude)>();
+        var position = 0;
+        while (position < expression.Length)
         {
-            var value = property.Value;
-            var text = value.ValueKind == JsonValueKind.String ? value.GetString() : null;
-            var exclude = text?.StartsWith('-') == true;
-            return (property.Name, exclude ? JsonSerializer.SerializeToElement(text![1..]) : value.Clone(), exclude);
-        })];
+            var colon = expression.IndexOf(':', position);
+            if (colon < 0)
+                throw new FormatException(error);
+            var key = expression[position..colon].Trim();
+            if (key.Length == 0 || key.IndexOfAny([',', '"', '{', '}']) >= 0)
+                throw new FormatException(error);
+
+            position = colon + 1;
+            while (position < expression.Length && char.IsWhiteSpace(expression[position]))
+                position++;
+            if (position == expression.Length)
+                throw new FormatException(error);
+
+            string value;
+            if (expression[position] == '"')
+            {
+                var start = position++;
+                var escaped = false;
+                while (position < expression.Length)
+                {
+                    var character = expression[position++];
+                    if (character == '"' && !escaped)
+                        break;
+                    escaped = character == '\\' && !escaped;
+                }
+                if (expression[position - 1] != '"' || position == start + 1)
+                    throw new FormatException(error);
+                try
+                {
+                    value = JsonSerializer.Deserialize<string>(expression[start..position])!;
+                }
+                catch (JsonException ex)
+                {
+                    throw new FormatException(error, ex);
+                }
+                while (position < expression.Length && char.IsWhiteSpace(expression[position]))
+                    position++;
+                if (position < expression.Length && expression[position] != ',')
+                    throw new FormatException(error);
+            }
+            else
+            {
+                var end = expression.IndexOf(',', position);
+                if (end < 0)
+                    end = expression.Length;
+                value = expression[position..end].Trim();
+                if (value.Length == 0 || value.Contains('"'))
+                    throw new FormatException(error);
+                position = end;
+            }
+
+            var exclude = value.StartsWith('-');
+            properties.Add((key, JsonSerializer.SerializeToElement(exclude ? value[1..] : value), exclude));
+            if (position < expression.Length)
+            {
+                position++;
+                if (string.IsNullOrWhiteSpace(expression[position..]))
+                    throw new FormatException(error);
+            }
+        }
+        return [.. properties];
     }
 
     /// <summary>
