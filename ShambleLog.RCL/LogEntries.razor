@@ -1,6 +1,157 @@
 @using ShambleLog.Core.Entities
+@using Microsoft.Extensions.Logging
 
+<div class="log-grid-container">
+    <div class="log-grid" style="@GridColumns">
+        <div class="log-grid-row log-grid-header-row">
+            <div class="log-cell"></div>
+            <div class="log-cell">Timestamp</div>
+            <div class="log-cell">Category</div>
+            <div class="log-cell">Level</div>
+            <div class="log-cell">Message</div>
+            @if (HasEFCoreEntries)
+            {
+                <div class="log-cell log-cell-elapsed">Elapsed (ms)</div>
+            }
+            @foreach (var prop in _pinnedProperties)
+            {
+                <div class="log-cell log-cell-prop-header">
+                    <span class="prop-header-name" title="@prop">@prop</span>
+                    <button type="button" class="unpin-prop-btn" @onclick="() => TogglePinnedProperty(prop)" title="Remove @prop column" aria-label="Remove @prop column">✕</button>
+                </div>
+            }
+        </div>
+
+        @foreach (var entry in Data)
+        {
+            var isExpanded = _expandedRows.Contains(entry.Id);
+            <div class="log-grid-row log-data-row @LevelRowClass(entry.Level)" @key="entry.Id">
+                <div class="log-cell log-cell-expand">
+                    <button type="button" class="expand-btn" @onclick="() => ToggleExpand(entry.Id)"
+                            aria-expanded="@isExpanded" aria-label="@(isExpanded ? "Collapse" : "Expand")" title="@(isExpanded ? "Collapse" : "Expand")">
+                        @(isExpanded ? "▼" : "▶")
+                    </button>
+                </div>
+                <div class="log-cell font-monospace" @onclick="() => ToggleExpand(entry.Id)">@entry.Timestamp.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss.fff")</div>
+                <div class="log-cell" title="@entry.Category" @onclick="() => ToggleExpand(entry.Id)">
+                    @entry.Category
+                    @if (entry.EFCoreEntry is { } efCategory)
+                    {
+                        @foreach (var table in efCategory.TargetTables)
+                        {
+                            <span class="badge bg-secondary me-1">@table</span>
+                        }
+                        @foreach (var tag in efCategory.Tags)
+                        {
+                            <span class="badge bg-info text-dark me-1">@tag</span>
+                        }
+                    }
+                </div>
+                <div class="log-cell" @onclick="() => ToggleExpand(entry.Id)">
+                    <span class="badge @CssUtil.GetLogLevelBadgeClass(entry.Level)">@entry.Level</span>
+                </div>
+                <div class="log-cell log-cell-message" @onclick="() => ToggleExpand(entry.Id)">
+                    @if (entry.EFCoreEntry is { } efMessage)
+                    {
+                        @if (!string.IsNullOrWhiteSpace(efMessage.Parameters))
+                        {
+                            <div class="text-muted font-monospace">@efMessage.Parameters</div>
+                        }
+                        <pre class="efcore-sql">@efMessage.CommandText</pre>
+                        <CopyButton Value="@efMessage.CommandText" />
+                    }
+                    else
+                    {
+                        @entry.Message
+                        <CopyButton Value="@entry.Message" />
+                    }
+                </div>
+                @if (HasEFCoreEntries)
+                {
+                    <div class="log-cell log-cell-elapsed font-monospace" @onclick="() => ToggleExpand(entry.Id)">@entry.EFCoreEntry?.ElapsedMs</div>
+                }
+                @foreach (var prop in _pinnedProperties)
+                {
+                    var value = GetPropertyValue(entry, prop);
+                    <div class="log-cell log-cell-prop" title="@value" @onclick="() => ToggleExpand(entry.Id)">@value</div>
+                }
+            </div>
+
+            @if (isExpanded)
+            {
+                <div class="log-grid-row log-detail-row" @key="@($"detail-{entry.Id}")">
+                    <div class="log-cell log-detail">
+                        @if (!string.IsNullOrWhiteSpace(entry.Exception))
+                        {
+                            <div>
+                                <strong>Exception</strong>
+                                <CopyButton Value="@entry.Exception" />
+                                <pre class="exception">@entry.Exception</pre>
+                            </div>
+                        }
+                        @if (entry.Properties.Count > 0)
+                        {
+                            <strong>Properties</strong>
+                            <table class="table table-sm table-bordered properties-table">
+                                <thead><tr><th>Key</th><th>Value</th></tr></thead>
+                                <tbody>
+                                    @foreach (var property in entry.Properties)
+                                    {
+                                        var pinned = _pinnedProperties.Contains(property.Key);
+                                        <tr>
+                                            <td>
+                                                @property.Key
+                                                <button type="button" class="btn btn-sm @(pinned ? "btn-primary" : "btn-outline-secondary") pin-prop-btn"
+                                                        @onclick="() => TogglePinnedProperty(property.Key)"
+                                                        title="@(pinned ? "Remove from columns" : "Add to columns")"
+                                                        aria-label="@($"{(pinned ? "Unpin" : "Pin")} {property.Key}")">@(pinned ? "−" : "+")</button>
+                                            </td>
+                                            <td>@property.Value</td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        }
+                        @if (string.IsNullOrWhiteSpace(entry.Exception) && entry.Properties.Count == 0)
+                        {
+                            <span class="text-muted">No additional details.</span>
+                        }
+                    </div>
+                </div>
+            }
+        }
+    </div>
+</div>
 
 @code {
     [Parameter] public LogEntry[] Data { get; set; } = [];
+
+    private readonly HashSet<long> _expandedRows = [];
+    private readonly List<string> _pinnedProperties = [];
+
+    private bool HasEFCoreEntries => Data.Any(entry => entry.EFCoreEntry is not null);
+    private string GridColumns => $"grid-template-columns: 28px 185px minmax(140px, 1fr) 100px minmax(250px, 3fr){(HasEFCoreEntries ? " 100px" : "")} repeat({_pinnedProperties.Count}, minmax(120px, 1fr));";
+
+    private void ToggleExpand(long id)
+    {
+        if (!_expandedRows.Add(id))
+            _expandedRows.Remove(id);
+    }
+
+    private void TogglePinnedProperty(string property)
+    {
+        if (!_pinnedProperties.Remove(property))
+            _pinnedProperties.Add(property);
+    }
+
+    private static string? GetPropertyValue(LogEntry entry, string property) =>
+        entry.Properties.TryGetValue(property, out var value) ? value?.ToString() : null;
+
+    private static string LevelRowClass(LogLevel level) => level switch
+    {
+        LogLevel.Warning => "log-row-warning",
+        LogLevel.Error => "log-row-error",
+        LogLevel.Critical => "log-row-critical",
+        _ => ""
+    };
 }
