@@ -231,6 +231,21 @@ public sealed class LoggingIntegrationTests(TestContext testContext)
 
     [TestMethod]
     [Timeout(10000, CooperativeCancellation = true)]
+    public async Task AddShambleLog_NoConfiguredDefault_SeedsOnlyWhenMissing()
+    {
+        using var host = CreateConfiguredHost(new Dictionary<string, string?>(), new CapturingLoggerProvider());
+        await host.StartAsync(testContext.CancellationToken);
+        await host.StopAsync(testContext.CancellationToken);
+        await using var scope = host.Services.CreateAsyncScope();
+        var rule = await scope.ServiceProvider.GetRequiredService<LoggingTestDbContext>()
+            .LogCategoryLevels.SingleAsync(testContext.CancellationToken);
+        Assert.AreEqual("Default", rule.Category);
+        Assert.AreEqual(LogLevel.Information, rule.Level);
+        Assert.IsFalse(rule.IsTemporary);
+    }
+
+    [TestMethod]
+    [Timeout(10000, CooperativeCancellation = true)]
     public async Task AddShambleLog_QueuedBeforeStart_UsesInitializedRules()
     {
         using var host = CreateConfiguredHost(new Dictionary<string, string?>

@@ -46,6 +46,18 @@ public class CategoryLevelQuery(IServiceScopeFactory scopeFactory)
         await context.SaveChangesAsync(cancellationToken);
     }
 
+    public async Task SetCategoryLevelAsync(string category, LogLevel level, CancellationToken cancellationToken = default)
+    {
+        var existing = (await ExecuteAsync(cancellationToken))
+            .FirstOrDefault(item => string.Equals(item.Category, category, StringComparison.OrdinalIgnoreCase));
+        await SaveAsync(new CategoryLevel
+        {
+            Category = existing?.Category ?? category,
+            Level = level,
+            IsTemporary = existing?.IsTemporary ?? true
+        }, existing?.Category, cancellationToken);
+    }
+
     public async Task DeleteAsync(string category, CancellationToken cancellationToken = default)
     {
         if (string.Equals(category, "Default", StringComparison.OrdinalIgnoreCase))

@@ -129,13 +129,7 @@
     {
         try
         {
-            var existing = _rules.FirstOrDefault(item => string.Equals(item.Category, summary.Category, StringComparison.OrdinalIgnoreCase));
-            await CategoryLevelQuery.SaveAsync(new CategoryLevel
-            {
-                Category = existing?.Category ?? summary.Category,
-                Level = level,
-                IsTemporary = existing?.IsTemporary ?? true
-            }, existing?.Category);
+            await CategoryLevelQuery.SetCategoryLevelAsync(summary.Category, level);
             _error = null;
             await Refresh();
         }
