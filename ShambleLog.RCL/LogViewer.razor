@@ -17,7 +17,7 @@
     </section>
 
     <section class="ms-2">
-        <FilterBar Criteria="_criteria" EFCoreCriteria="_efCoreCriteria" />
+        <FilterBar @bind-Criteria="_criteria" @bind-Criteria:after="Refresh" EFCoreCriteria="_efCoreCriteria" />
         @*main table*@
     </section>
 </div>

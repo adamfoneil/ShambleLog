@@ -2,12 +2,15 @@
 @using ShambleLog.Core.Queries
 
 <div class="d-flex align-items-center">
-    <RadzenDatePicker @bind-Value="Criteria.Date" ShowTime="false" />
-    <RadzenTextBox @bind-Value="Criteria.TimeExpression" />
-    <RadzenDropDown @bind-Value="Criteria.Level" Data="Enum.GetValues<LogLevel>()" TValue="LogLevel?" />
+    <RadzenDatePicker @bind-Value="Criteria.Date" @bind-Value:after="NotifyCriteriaChanged" ShowTime="false" class="me-2" Placeholder="date" AllowClear="true" />
+    <RadzenTextBox @bind-Value="Criteria.TimeExpression" @bind-Value:after="NotifyCriteriaChanged" class="me-2" Placeholder="time expression" />
+    <RadzenDropDown @bind-Value="Criteria.Level" @bind-Value:after="NotifyCriteriaChanged" Data="Enum.GetValues<LogLevel>()" TValue="LogLevel?" class="me-2" Placeholder="level" AllowClear="true" />
 </div>
 
 @code {
     [Parameter] public LogQuery.Criteria Criteria { get; set; } = new();
+    [Parameter] public EventCallback<LogQuery.Criteria> CriteriaChanged { get; set; }
     [Parameter] public LogQuery.EFCoreCriteria? EFCoreCriteria { get; set; }
+
+    private Task NotifyCriteriaChanged() => CriteriaChanged.InvokeAsync(Criteria);
 }
