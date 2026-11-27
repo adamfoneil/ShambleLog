@@ -1,15 +1,19 @@
 @using ShambleLog.Core.Entities
 @using Microsoft.Extensions.Logging
+@using System.Text.Json
 
+@{
+    var hasEFCoreEntries = Data.Any(entry => entry.EFCoreEntry is not null);
+}
 <div class="log-grid-container">
-    <div class="log-grid" style="@GridColumns">
+    <div class="log-grid" style="@GridColumns(hasEFCoreEntries)">
         <div class="log-grid-row log-grid-header-row">
             <div class="log-cell"></div>
             <div class="log-cell">Timestamp</div>
             <div class="log-cell">Category</div>
             <div class="log-cell">Level</div>
             <div class="log-cell">Message</div>
-            @if (HasEFCoreEntries)
+            @if (hasEFCoreEntries)
             {
                 <div class="log-cell log-cell-elapsed">Elapsed (ms)</div>
             }
@@ -66,7 +70,7 @@
                         <CopyButton Value="@entry.Message" />
                     }
                 </div>
-                @if (HasEFCoreEntries)
+                @if (hasEFCoreEntries)
                 {
                     <div class="log-cell log-cell-elapsed font-monospace" @onclick="() => ToggleExpand(entry.Id)">@entry.EFCoreEntry?.ElapsedMs</div>
                 }
@@ -106,7 +110,7 @@
                                                         title="@(pinned ? "Remove from columns" : "Add to columns")"
                                                         aria-label="@($"{(pinned ? "Unpin" : "Pin")} {property.Key}")">@(pinned ? "−" : "+")</button>
                                             </td>
-                                            <td>@property.Value</td>
+                                            <td>@FormatPropertyValue(property.Value)</td>
                                         </tr>
                                     }
                                 </tbody>
@@ -129,8 +133,7 @@
     private readonly HashSet<long> _expandedRows = [];
     private readonly List<string> _pinnedProperties = [];
 
-    private bool HasEFCoreEntries => Data.Any(entry => entry.EFCoreEntry is not null);
-    private string GridColumns => $"grid-template-columns: 28px 185px minmax(140px, 1fr) 100px minmax(250px, 3fr){(HasEFCoreEntries ? " 100px" : "")} repeat({_pinnedProperties.Count}, minmax(120px, 1fr));";
+    private string GridColumns(bool hasEFCoreEntries) => $"grid-template-columns: 28px 185px minmax(140px, 1fr) 100px minmax(250px, 3fr){(hasEFCoreEntries ? " 100px" : "")} repeat({_pinnedProperties.Count}, minmax(120px, 1fr)); min-width: {703 + (hasEFCoreEntries ? 100 : 0) + _pinnedProperties.Count * 120}px;";
 
     private void ToggleExpand(long id)
     {
@@ -145,7 +148,15 @@
     }
 
     private static string? GetPropertyValue(LogEntry entry, string property) =>
-        entry.Properties.TryGetValue(property, out var value) ? value?.ToString() : null;
+        entry.Properties.TryGetValue(property, out var value) ? FormatPropertyValue(value) : null;
+
+    private static string? FormatPropertyValue(object? value) => value switch
+    {
+        null => null,
+        string text => text,
+        JsonElement element => element.ToString(),
+        _ => JsonSerializer.Serialize(value)
+    };
 
     private static string LevelRowClass(LogLevel level) => level switch
     {
