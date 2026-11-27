@@ -55,7 +55,7 @@ public abstract class LogQuery(ILoggingDbContext loggingDbContext)
             query = query.Include(entry => entry.EFCoreEntry);
         var (filteredQuery, clientFilter) = FilterProperties(query, properties);
         filteredQuery = ApplyCriteria(filteredQuery, criteria);
-        var rows = await filteredQuery.Skip(skip).Take(take).ToArrayAsync(cancellationToken);
+        var rows = await filteredQuery.Skip(skip).Take(take).TagWith("ShambleLog Internal").ToArrayAsync(cancellationToken);
         return clientFilter is null ? rows : [.. rows.Where(clientFilter)];
     }
 
@@ -168,7 +168,7 @@ public abstract class LogQuery(ILoggingDbContext loggingDbContext)
                      select new { Command = command, Log = log };
         var ascending = IsAscending(criteria?.TimeExpression);
         joined = ascending ? joined.OrderBy(row => row.Log.Timestamp) : joined.OrderByDescending(row => row.Log.Timestamp);
-        var rows = await joined.Skip(skip).Take(take).ToArrayAsync(cancellationToken);
+        var rows = await joined.Skip(skip).Take(take).TagWith("ShambleLog Internal").ToArrayAsync(cancellationToken);
         if (clientFilter is not null)
             rows = [.. rows.Where(row => clientFilter(row.Log))];
         return [.. rows.Select(row =>

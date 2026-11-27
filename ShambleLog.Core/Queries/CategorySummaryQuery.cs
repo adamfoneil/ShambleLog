@@ -22,6 +22,7 @@ public class CategorySummaryQuery(ILoggingDbContext loggingDbContext)
         var counts = await query
             .GroupBy(entry => new { entry.Category, entry.Level })
             .Select(group => new { group.Key.Category, group.Key.Level, Count = group.Count() })
+            .TagWith("ShambleLog Internal")
             .ToArrayAsync(cancellationToken);
 
         return [.. counts
