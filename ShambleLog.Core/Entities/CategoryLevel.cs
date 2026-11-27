@@ -11,4 +11,8 @@ public class CategoryLevel
     [Key]
     public string Category { get; set; } = string.Empty;
     public LogLevel Level { get; set; }
+    /// <summary>
+    /// indicates this was created through the UI and is intended to be safely removable in the UI
+    /// </summary>
+    public bool IsTemporary { get; set; }
 }
