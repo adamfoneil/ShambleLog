@@ -19,6 +19,7 @@
   <ItemGroup>
     <ProjectReference Include="..\ShambleLog.Core\ShambleLog.Core.csproj" />
     <ProjectReference Include="..\ShambleLog.PostgreSQL\ShambleLog.PostgreSQL.csproj" />
+    <ProjectReference Include="..\ShambleLog.RCL\ShambleLog.RCL.csproj" />
   </ItemGroup>
 
 </Project>
