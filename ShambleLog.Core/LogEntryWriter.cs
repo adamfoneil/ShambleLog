@@ -77,24 +77,11 @@ internal sealed class CategoryLevelGate(ILoggingDbContext context, SuppressedCat
     public async Task<bool> IsEnabledAsync(LogEntry entry, CancellationToken cancellationToken)
     {
         var rules = await context.LogCategoryLevels.AsNoTracking().ToListAsync(cancellationToken);
-        var minimumLevel = FindMinimumLevel(rules, entry.Category);
+        var minimumLevel = CategoryLevelResolver.FindEffective(rules, entry.Category)?.Level;
         var isEnabled = minimumLevel is null || (minimumLevel != LogLevel.None && entry.Level >= minimumLevel);
         if (!isEnabled)
             suppressedCategories.Record(entry.Category, entry.Level);
         return isEnabled;
     }
 
-    private static LogLevel? FindMinimumLevel(IEnumerable<CategoryLevel> rules, string category)
-    {
-        var rule = rules
-            .Where(item => !string.Equals(item.Category, "Default", StringComparison.OrdinalIgnoreCase)
-                && category.StartsWith(item.Category, StringComparison.OrdinalIgnoreCase))
-            .OrderByDescending(item => item.Category.Length)
-            .ThenBy(item => item.Category, StringComparer.Ordinal)
-            .FirstOrDefault()
-            ?? rules.Where(item => string.Equals(item.Category, "Default", StringComparison.OrdinalIgnoreCase))
-                .OrderBy(item => item.Category, StringComparer.Ordinal)
-                .FirstOrDefault();
-        return rule?.Level;
-    }
 }

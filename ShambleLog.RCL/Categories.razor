@@ -1,0 +1,144 @@
+@using Microsoft.Extensions.Logging
+@using ShambleLog.Core.Entities
+@using ShambleLog.Core.Queries
+
+<div class="d-flex gap-2 mb-2">
+    <button type="button" class="btn btn-sm btn-primary" @onclick="NewRule">Add category</button>
+    <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="Refresh">Refresh</button>
+</div>
+@if (_error is not null)
+{
+    <div class="text-danger" role="alert">@_error</div>
+}
+@if (_editing is not null)
+{
+    <div class="mb-2">
+        <label>Category
+            <input class="form-control form-control-sm" @bind="_editing.Category" disabled="@IsDefault(_originalCategory)" />
+        </label>
+        <label>Level
+            <select class="form-select form-select-sm" @bind="_editing.Level">
+                @foreach (var level in Enum.GetValues<LogLevel>())
+                {
+                    <option value="@level">@level</option>
+                }
+            </select>
+        </label>
+        <button type="button" class="btn btn-sm btn-primary" @onclick="Save">Save</button>
+        <button type="button" class="btn btn-sm btn-secondary" @onclick="Cancel">Cancel</button>
+    </div>
+}
+@foreach (var rule in _rules)
+{
+    <div class="border-bottom py-2" @key="rule.Category">
+        <div>
+            <strong>@rule.Category</strong>
+            <span class="badge @CssUtil.GetLogLevelBadgeClass(rule.Level)">@rule.Level</span>
+            @if (rule.IsTemporary)
+            {
+                <span class="badge bg-secondary">Temporary</span>
+            }
+            <button type="button" class="btn btn-sm btn-outline-primary" @onclick="() => Edit(rule)">Edit</button>
+            @if (!IsDefault(rule.Category))
+            {
+                <button type="button" class="btn btn-sm btn-outline-danger" @onclick="() => Delete(rule)">Delete</button>
+            }
+        </div>
+        @foreach (var summary in _summaries.Where(item => CategoryLevelResolver.FindEffective(_rules, item.Category) == rule).OrderBy(item => item.Category))
+        {
+            <div class="ms-4 mt-1" @key="summary.Category">
+                <span>@summary.Category</span>
+                @foreach (var count in summary.LevelCounts.OrderBy(item => item.Key))
+                {
+                    <span class="badge @CssUtil.GetLogLevelBadgeClass(count.Key)" title="@count.Key">@count.Key: @count.Value</span>
+                }
+                @if (rule.Level > LogLevel.Trace)
+                {
+                    var higher = rule.Level - 1;
+                    <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="() => SetLevel(summary, higher)">Increase to @higher</button>
+                }
+                @if (rule.Level < LogLevel.None)
+                {
+                    var lower = rule.Level + 1;
+                    <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="() => SetLevel(summary, lower)">Decrease to @lower</button>
+                }
+            </div>
+        }
+    </div>
+}
+
+@code {
+    [Parameter, EditorRequired] public CategoryLevelQuery CategoryLevelQuery { get; set; } = default!;
+    [Parameter, EditorRequired] public CategorySummaryQuery CategorySummaryQuery { get; set; } = default!;
+
+    private CategoryLevel[] _rules = [];
+    private CategorySummaryQuery.Result[] _summaries = [];
+    private CategoryLevel? _editing;
+    private string? _originalCategory;
+    private string? _error;
+
+    protected override Task OnInitializedAsync() => Refresh();
+
+    public async Task Refresh()
+    {
+        _rules = await CategoryLevelQuery.ExecuteAsync();
+        _summaries = await CategorySummaryQuery.ExecuteAsync();
+    }
+
+    private static bool IsDefault(string? category) => string.Equals(category, "Default", StringComparison.OrdinalIgnoreCase);
+
+    private void NewRule()
+    {
+        _error = null;
+        _originalCategory = null;
+        _editing = new CategoryLevel { Level = LogLevel.Information };
+    }
+
+    private void Edit(CategoryLevel rule)
+    {
+        _error = null;
+        _originalCategory = rule.Category;
+        _editing = new CategoryLevel { Category = rule.Category, Level = rule.Level, IsTemporary = rule.IsTemporary };
+    }
+
+    private void Cancel() { _editing = null; _error = null; }
+
+    private async Task Save()
+    {
+        try
+        {
+            await CategoryLevelQuery.SaveAsync(_editing!, _originalCategory);
+            Cancel();
+            await Refresh();
+        }
+        catch (InvalidOperationException ex) { _error = ex.Message; }
+    }
+
+    private async Task Delete(CategoryLevel rule)
+    {
+        try
+        {
+            await CategoryLevelQuery.DeleteAsync(rule.Category);
+            Cancel();
+            await Refresh();
+        }
+        catch (InvalidOperationException ex) { _error = ex.Message; }
+    }
+
+    private async Task SetLevel(CategorySummaryQuery.Result summary, LogLevel level)
+    {
+        try
+        {
+            var existing = _rules.FirstOrDefault(item => string.Equals(item.Category, summary.Category, StringComparison.OrdinalIgnoreCase));
+            await CategoryLevelQuery.SaveAsync(new CategoryLevel
+            {
+                Category = existing?.Category ?? summary.Category,
+                Level = level,
+                IsTemporary = existing?.IsTemporary ?? true
+            }, existing?.Category);
+            _error = null;
+            await Refresh();
+        }
+        catch (InvalidOperationException ex) { _error = ex.Message; }
+    }
+}

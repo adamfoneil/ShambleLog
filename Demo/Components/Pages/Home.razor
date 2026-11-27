@@ -3,8 +3,9 @@
 @using ShambleLog.RCL
 @inject LogQuery LogQuery
 @inject CategorySummaryQuery CategorySummaryQuery
+@inject CategoryLevelQuery CategoryLevelQuery
 @inject EFCoreSummaryQuery EFCoreSummaryQuery
 
 <PageTitle>Home</PageTitle>
 
-<LogViewer CategorySummaryQuery="CategorySummaryQuery" EFCoreSummaryQuery="EFCoreSummaryQuery" LogQuery="LogQuery" />
+<LogViewer CategoryLevelQuery="CategoryLevelQuery" CategorySummaryQuery="CategorySummaryQuery" EFCoreSummaryQuery="EFCoreSummaryQuery" LogQuery="LogQuery" />

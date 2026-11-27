@@ -6,6 +6,7 @@ using ShambleLog.Core;
 using ShambleLog.Core.Middleware;
 using ShambleLog.Core.Queries;
 using ShambleLog.PostgreSQL;
+using ShambleLog.RCL;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -17,6 +18,7 @@ builder.Services.AddRadzenComponents();
 // needed for RCL UI
 builder.Services.AddTransient<LogQuery, PostgreSQLLogQuery>();
 builder.Services.AddTransient<CategorySummaryQuery>();
+builder.Services.AddTransient<CategoryLevelQuery>();
 builder.Services.AddTransient<EFCoreSummaryQuery>();
 
 var connectionString = builder.Configuration.GetConnectionString("Local");

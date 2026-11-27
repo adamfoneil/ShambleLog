@@ -8,7 +8,7 @@
         <RadzenAccordion>
             <Items>
                 <RadzenAccordionItem Text="Categories" Selected="true">
-
+                    <Categories CategoryLevelQuery="CategoryLevelQuery" CategorySummaryQuery="CategorySummaryQuery" />
                 </RadzenAccordionItem>
                 <RadzenAccordionItem Text="EF Core" Visible="_efCoreEnabled">
 
@@ -39,12 +39,11 @@
     private LogQuery.EFCoreCriteria? _efCoreCriteria;
     private string? _filterError;
     private LogEntry[] _logEntries = [];
-    private CategoryLevel[] _categoryLevels = [];
-    private CategorySummaryQuery.Result[] _categorySummaries = [];
     private EFCoreSummaryQuery.Result[] _efCoreSummaries = [];
 
     [Parameter, EditorRequired] public LogQuery LogQuery { get; set; }
     [Parameter, EditorRequired] public CategorySummaryQuery CategorySummaryQuery { get; set; }
+    [Parameter, EditorRequired] public CategoryLevelQuery CategoryLevelQuery { get; set; }
     [Parameter, EditorRequired] public EFCoreSummaryQuery EFCoreSummaryQuery { get; set; }
 
     protected override async Task OnInitializedAsync()
@@ -55,8 +54,6 @@
 
     private async Task Refresh()
     {
-        //_categoryLevels = await 
-        _categorySummaries = await CategorySummaryQuery.ExecuteAsync();
         try
         {
             _logEntries = await LogQuery.ExecuteAsync(_criteria, PageSize * _page, PageSize);

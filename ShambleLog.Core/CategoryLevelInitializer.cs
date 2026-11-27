@@ -21,20 +21,14 @@ internal sealed class CategoryLevelInitializer(
     public async Task InitializeAsync(CancellationToken cancellationToken)
     {
         var section = services.GetService<IConfiguration>()?.GetSection("Logging:LogLevel");
-        if (section is null)
-            return;
-
         var configured = new List<CategoryLevel>();
-        foreach (var child in section.GetChildren())
+        foreach (var child in section?.GetChildren() ?? [])
         {
             if (child.Value is null || !Enum.TryParse<LogLevel>(child.Value, true, out var level)
                 || !Enum.GetNames<LogLevel>().Contains(child.Value, StringComparer.OrdinalIgnoreCase))
                 throw new InvalidOperationException($"Invalid log level '{child.Value}' for configuration key '{child.Path}'.");
             configured.Add(new CategoryLevel { Category = child.Key, Level = level });
         }
-
-        if (configured.Count == 0)
-            return;
 
         var conflicts = new List<(string Category, LogLevel Configured, LogLevel Existing)>();
         queue.SuppressLogging = true;
@@ -43,6 +37,9 @@ internal sealed class CategoryLevelInitializer(
             await using var scope = scopeFactory.CreateAsyncScope();
             var context = scope.ServiceProvider.GetRequiredService<ILoggingDbContext>();
             var existing = await context.LogCategoryLevels.AsNoTracking().ToListAsync(cancellationToken);
+            if (!configured.Any(rule => string.Equals(rule.Category, "Default", StringComparison.OrdinalIgnoreCase))
+                && !existing.Any(rule => string.Equals(rule.Category, "Default", StringComparison.OrdinalIgnoreCase)))
+                configured.Add(new CategoryLevel { Category = "Default", Level = LogLevel.Information });
             var added = false;
             foreach (var rule in configured)
             {
