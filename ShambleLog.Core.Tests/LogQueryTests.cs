@@ -26,7 +26,7 @@ public sealed class LogQueryTests
 
         var query = new LogQuery(db);
         var criteria = new LogQuery.Criteria { Date = DateOnly.FromDateTime(date) };
-        var rows = await query.ExecuteAsync(criteria);
+        var rows = await query.ExecuteAsync(criteria, 0, int.MaxValue);
         CollectionAssert.AreEqual(new long[] { 2, 1 }, rows.Select(row => row.Id).ToArray());
         Assert.AreEqual("select", rows[0].EFCoreEntry?.CommandText);
         Assert.IsNull(rows[1].EFCoreEntry);
@@ -36,9 +36,9 @@ public sealed class LogQueryTests
         criteria.Level = LogLevel.Warning;
         criteria.TemplateContains = "template";
         criteria.MessageContains = "first";
-        Assert.AreEqual(1L, Assert.ContainsSingle(await query.ExecuteAsync(criteria)).Id);
+        Assert.AreEqual(1L, Assert.ContainsSingle(await query.ExecuteAsync(criteria, 0, int.MaxValue)).Id);
         criteria.Category = "Other";
-        Assert.IsEmpty(await query.ExecuteAsync(criteria));
+        Assert.IsEmpty(await query.ExecuteAsync(criteria, 0, int.MaxValue));
     }
 
     [TestMethod]
@@ -60,14 +60,14 @@ public sealed class LogQueryTests
             Date = DateOnly.FromDateTime(date),
             PropertiesContain = """{"TraceId":"abc","Count":3,"Method":"-Get"}"""
         };
-        var rows = await new LogQuery(db).ExecuteAsync(criteria);
+        var rows = await new LogQuery(db).ExecuteAsync(criteria, 0, int.MaxValue);
         CollectionAssert.AreEqual(new long[] { 3, 2 }, rows.Select(row => row.Id).ToArray());
         criteria.PropertiesContain = """{"Count":"3"}""";
-        Assert.IsEmpty(await new LogQuery(db).ExecuteAsync(criteria));
+        Assert.IsEmpty(await new LogQuery(db).ExecuteAsync(criteria, 0, int.MaxValue));
         criteria.PropertiesContain = """{"Scopes":["request"],"Detail":{"Name":"test"}}""";
-        Assert.AreEqual(1L, Assert.ContainsSingle(await new LogQuery(db).ExecuteAsync(criteria)).Id);
+        Assert.AreEqual(1L, Assert.ContainsSingle(await new LogQuery(db).ExecuteAsync(criteria, 0, int.MaxValue)).Id);
         criteria.PropertiesContain = "[]";
-        await Assert.ThrowsExactlyAsync<FormatException>(() => new LogQuery(db).ExecuteAsync(criteria));
+        await Assert.ThrowsExactlyAsync<FormatException>(() => new LogQuery(db).ExecuteAsync(criteria, 0, int.MaxValue));
     }
 
     [TestMethod]
@@ -87,15 +87,15 @@ public sealed class LogQueryTests
         var query = new LogQuery(db);
         var commandCriteria = new LogQuery.EFCoreCriteria { Table = "Users", Tag = "report", CommandTextContains = "select", MinElapsedMs = 100 };
         var criteria = new LogQuery.Criteria { Date = DateOnly.FromDateTime(date), TimeExpression = "asc" };
-        var rows = await query.ExecuteAsync(commandCriteria, criteria);
+        var rows = await query.ExecuteAsync(commandCriteria, 0, int.MaxValue, criteria);
         CollectionAssert.AreEqual(new long[] { 1, 2 }, rows.Select(row => row.LogEntryId).ToArray());
         Assert.AreEqual("first", rows[0].LogEntry.Message);
         criteria.PropertiesContain = """{"TraceId":"abc"}""";
-        Assert.AreEqual(1L, Assert.ContainsSingle(await query.ExecuteAsync(commandCriteria, criteria)).LogEntryId);
+        Assert.AreEqual(1L, Assert.ContainsSingle(await query.ExecuteAsync(commandCriteria, 0, int.MaxValue, criteria)).LogEntryId);
         commandCriteria.MinElapsedMs = 101;
-        Assert.IsEmpty(await query.ExecuteAsync(commandCriteria, criteria));
+        Assert.IsEmpty(await query.ExecuteAsync(commandCriteria, 0, int.MaxValue, criteria));
         commandCriteria.Table = "Missing";
-        Assert.IsEmpty(await query.ExecuteAsync(commandCriteria));
+        Assert.IsEmpty(await query.ExecuteAsync(commandCriteria, 0, int.MaxValue));
     }
 
     [TestMethod]
@@ -137,14 +137,14 @@ public sealed class LogQueryTests
 
         var query = new LogQuery(db);
         var criteria = new LogQuery.Criteria { Date = DateOnly.FromDateTime(date), TimeExpression = "0930:1330" };
-        CollectionAssert.AreEqual(new long[] { 4, 3, 2 }, (await query.ExecuteAsync(criteria)).Select(row => row.Id).ToArray());
+        CollectionAssert.AreEqual(new long[] { 4, 3, 2 }, (await query.ExecuteAsync(criteria, 0, int.MaxValue)).Select(row => row.Id).ToArray());
         criteria.TimeExpression = "0930:1330:ASC";
-        CollectionAssert.AreEqual(new long[] { 2, 3, 4 }, (await query.ExecuteAsync(criteria)).Select(row => row.Id).ToArray());
-        CollectionAssert.AreEqual(new long[] { 2, 3, 4 }, (await query.ExecuteAsync(new LogQuery.EFCoreCriteria(), criteria)).Select(row => row.LogEntryId).ToArray());
+        CollectionAssert.AreEqual(new long[] { 2, 3, 4 }, (await query.ExecuteAsync(criteria, 0, int.MaxValue)).Select(row => row.Id).ToArray());
+        CollectionAssert.AreEqual(new long[] { 2, 3, 4 }, (await query.ExecuteAsync(new LogQuery.EFCoreCriteria(), 0, int.MaxValue, criteria)).Select(row => row.LogEntryId).ToArray());
         criteria.TimeExpression = "0930";
-        CollectionAssert.AreEqual(new long[] { 5, 4, 3, 2 }, (await query.ExecuteAsync(criteria)).Select(row => row.Id).ToArray());
+        CollectionAssert.AreEqual(new long[] { 5, 4, 3, 2 }, (await query.ExecuteAsync(criteria, 0, int.MaxValue)).Select(row => row.Id).ToArray());
         criteria.TimeExpression = "0930:0930";
-        CollectionAssert.AreEqual(new long[] { 2 }, (await query.ExecuteAsync(criteria)).Select(row => row.Id).ToArray());
+        CollectionAssert.AreEqual(new long[] { 2 }, (await query.ExecuteAsync(criteria, 0, int.MaxValue)).Select(row => row.Id).ToArray());
     }
 
     [TestMethod]
@@ -192,11 +192,11 @@ public sealed class LogQueryTests
         await db.SaveChangesAsync();
         var query = new LogQuery(db);
         var criteria = new LogQuery.Criteria { Date = DateOnly.FromDateTime(date) };
-        Assert.AreEqual(1L, Assert.ContainsSingle(await query.ExecuteAsync(criteria)).Id);
-        await Assert.ThrowsExactlyAsync<NotSupportedException>(() => query.ExecuteAsync(new LogQuery.EFCoreCriteria()));
+        Assert.AreEqual(1L, Assert.ContainsSingle(await query.ExecuteAsync(criteria, 0, int.MaxValue)).Id);
+        await Assert.ThrowsExactlyAsync<NotSupportedException>(() => query.ExecuteAsync(new LogQuery.EFCoreCriteria(), 0, int.MaxValue));
         using var cancellation = new CancellationTokenSource();
         cancellation.Cancel();
-        await Assert.ThrowsAsync<OperationCanceledException>(() => query.ExecuteAsync(criteria, cancellation.Token));
+        await Assert.ThrowsAsync<OperationCanceledException>(() => query.ExecuteAsync(criteria, 0, int.MaxValue, cancellation.Token));
     }
 
     [TestMethod]
@@ -315,8 +315,8 @@ public sealed class LogQueryTests
             Date = DateOnly.FromDateTime(date),
             PropertiesContain = """{"Limit":2}"""
         };
-        CollectionAssert.AreEqual(new long[] { 1 }, (await query.ExecuteAsync(criteria)).Select(row => row.Id).ToArray());
-        CollectionAssert.AreEqual(new long[] { 1 }, (await query.ExecuteAsync(new ShambleLog.Core.Queries.LogQuery.EFCoreCriteria(), criteria))
+        CollectionAssert.AreEqual(new long[] { 1 }, (await query.ExecuteAsync(criteria, 0, int.MaxValue)).Select(row => row.Id).ToArray());
+        CollectionAssert.AreEqual(new long[] { 1 }, (await query.ExecuteAsync(new ShambleLog.Core.Queries.LogQuery.EFCoreCriteria(), 0, int.MaxValue, criteria))
             .Select(row => row.LogEntryId).ToArray());
     }
 
