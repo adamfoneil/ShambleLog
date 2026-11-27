@@ -23,7 +23,7 @@ public abstract class LogQuery(ILoggingDbContext loggingDbContext)
         /// because the default sort is descending by timestamp, but you may want to see the earliest log entries first for a given TraceId/RequestId.
         /// </summary>
         public string? TimeExpression { get; set; }
-        public string? Category { get; set; }
+        public string? CategoryContains { get; set; }
         public LogLevel? Level { get; set; }
         public string? TemplateContains { get; set; }
         public string? MessageContains { get; set; }
@@ -187,8 +187,8 @@ public abstract class LogQuery(ILoggingDbContext loggingDbContext)
             var end = start.AddDays(1);
             query = query.Where(entry => entry.Timestamp < end);
         }
-        if (!string.IsNullOrWhiteSpace(criteria.Category))
-            query = query.Where(entry => entry.Category == criteria.Category);
+        if (!string.IsNullOrWhiteSpace(criteria.CategoryContains))
+            query = query.Where(entry => entry.Category.ToLower().Contains(criteria.CategoryContains.ToLower()));
         if (criteria.Level is not null)
             query = query.Where(entry => entry.Level == criteria.Level.Value);
         if (!string.IsNullOrWhiteSpace(criteria.TemplateContains))

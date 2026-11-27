@@ -7,7 +7,7 @@
     <GeneratePackageOnBuild>True</GeneratePackageOnBuild>
     <PackageId>ShambleLog.Core</PackageId>
     <Title>ShambleLog.Core</Title>
-    <Version>0.9.2-alpha</Version>
+    <Version>0.9.3-alpha</Version>
     <Authors>Adam O'Neil</Authors>
     <Company>Adam O'Neil</Company>
     <Copyright>Copyright (c) 2026 Adam O'Neil</Copyright>

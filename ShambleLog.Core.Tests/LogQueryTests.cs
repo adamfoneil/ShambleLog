@@ -32,13 +32,43 @@ public sealed class LogQueryTests
         Assert.IsNull(rows[1].EFCoreEntry);
 
         criteria.TimeExpression = "asc";
-        criteria.Category = "Example";
+        criteria.CategoryContains = "Example";
         criteria.Level = LogLevel.Warning;
         criteria.TemplateContains = "template";
         criteria.MessageContains = "first";
         Assert.AreEqual(1L, Assert.ContainsSingle(await query.ExecuteAsync(criteria, 0, int.MaxValue)).Id);
-        criteria.Category = "Other";
+        criteria.CategoryContains = "Other";
         Assert.IsEmpty(await query.ExecuteAsync(criteria, 0, int.MaxValue));
+    }
+
+    [TestMethod]
+    public async Task CategoryContains_FiltersBothQueryTypesBeforePagination()
+    {
+        await using var db = CreateContext();
+        var date = new DateTime(2026, 1, 15, 0, 0, 0, DateTimeKind.Utc);
+        var first = Entry(1, date.AddHours(1), "first");
+        first.Category = "App.Example.Service";
+        var second = Entry(2, date.AddHours(2), "second");
+        second.Category = "Other.EXAMPLE.Worker";
+        var third = Entry(3, date.AddHours(3), "third");
+        third.Category = "Unrelated";
+        foreach (var entry in new[] { first, second, third })
+            entry.EFCoreEntry = new EFCoreEntry { CommandText = entry.Message };
+        db.LogEntries.AddRange(first, second, third);
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        var query = new LogQuery(db);
+        var criteria = new LogQuery.Criteria { Date = DateOnly.FromDateTime(date), CategoryContains = "eXaMpLe" };
+        CollectionAssert.AreEqual(new long[] { 2, 1 }, (await query.ExecuteAsync(criteria, 0, 2)).Select(row => row.Id).ToArray());
+        CollectionAssert.AreEqual(new long[] { 2, 1 }, (await query.ExecuteAsync(new LogQuery.EFCoreCriteria(), 0, 2, criteria))
+            .Select(row => row.LogEntryId).ToArray());
+        Assert.AreEqual(1L, Assert.ContainsSingle(await query.ExecuteAsync(criteria, 1, 1)).Id);
+
+        criteria.CategoryContains = "missing";
+        Assert.IsEmpty(await query.ExecuteAsync(criteria, 0, int.MaxValue));
+        criteria.CategoryContains = "  ";
+        CollectionAssert.AreEqual(new long[] { 3, 2, 1 }, (await query.ExecuteAsync(criteria, 0, int.MaxValue)).Select(row => row.Id).ToArray());
     }
 
     [TestMethod]
