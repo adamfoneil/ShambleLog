@@ -18,9 +18,15 @@
     </section>
 
     <section class="ms-2">
-        <FilterBar @bind-Criteria="_criteria" @bind-Criteria:after="Refresh" EFCoreCriteria="_efCoreCriteria" />
+        <div class="d-flex align-items-center justify-content-between">
+            <FilterBar @bind-Criteria="_criteria" @bind-Criteria:after="Refresh" EFCoreCriteria="_efCoreCriteria" />
+            <Pager @bind-Value="_page" Change="Refresh" />
+        </div>
+        @if (_filterError is not null)
+        {
+            <div class="text-danger" role="alert">@_filterError</div>
+        }
         <LogEntries Data="_logEntries" />
-        <Pager @bind-Value="_page" Change="Refresh" />
     </section>
 </div>
 
@@ -31,7 +37,9 @@
     private bool _efCoreEnabled = false;
     private LogQuery.Criteria _criteria = new();
     private LogQuery.EFCoreCriteria? _efCoreCriteria;
+    private string? _filterError;
     private LogEntry[] _logEntries = [];
+    private CategoryLevel[] _categoryLevels = [];
     private CategorySummaryQuery.Result[] _categorySummaries = [];
     private EFCoreSummaryQuery.Result[] _efCoreSummaries = [];
 
@@ -47,8 +55,18 @@
 
     private async Task Refresh()
     {
+        //_categoryLevels = await 
         _categorySummaries = await CategorySummaryQuery.ExecuteAsync();
-        _logEntries = await LogQuery.ExecuteAsync(_criteria, PageSize * _page, PageSize);
+        try
+        {
+            _logEntries = await LogQuery.ExecuteAsync(_criteria, PageSize * _page, PageSize);
+            _filterError = null;
+        }
+        catch (FormatException ex)
+        {
+            _filterError = ex.Message;
+            return;
+        }
         _efCoreSummaries = await EFCoreSummaryQuery.ExecuteAsync();
     }
 }

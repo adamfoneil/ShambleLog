@@ -1,10 +1,13 @@
 @using Microsoft.Extensions.Logging
 @using ShambleLog.Core.Queries
 
-<div class="d-flex align-items-center">
-    <RadzenDatePicker @bind-Value="Criteria.Date" @bind-Value:after="NotifyCriteriaChanged" ShowTime="false" class="me-2" Placeholder="date" AllowClear="true" />
-    <RadzenTextBox @bind-Value="Criteria.TimeExpression" @bind-Value:after="NotifyCriteriaChanged" class="me-2" Placeholder="time expression" />
-    <RadzenDropDown @bind-Value="Criteria.Level" @bind-Value:after="NotifyCriteriaChanged" Data="Enum.GetValues<LogLevel>()" TValue="LogLevel?" class="me-2" Placeholder="level" AllowClear="true" />
+<div class="d-flex align-items-center mb-2">
+    <RadzenDatePicker @bind-Value="Criteria.Date" Change="NotifyCriteriaChanged" ShowTime="false" class="me-2" Placeholder="date" AllowClear="true" style="width:160px" />
+    <RadzenTextBox @bind-Value="Criteria.TimeExpression" Change="NotifyCriteriaChanged" class="me-2" Placeholder="time expression" />
+    <RadzenDropDown @bind-Value="Criteria.Level" Change="NotifyCriteriaChanged" Data="Enum.GetValues<LogLevel>()" TValue="LogLevel?" class="me-2" Placeholder="level" AllowClear="true" />
+    <RadzenTextBox @bind-Value="Criteria.CategoryContains" Change="NotifyCriteriaChanged" class="me-2" Placeholder="category contains" />
+    <RadzenTextBox @bind-Value="Criteria.MessageContains" Change="NotifyCriteriaChanged" class="me-2" Placeholder="message contains" />
+    <RadzenTextBox @bind-Value="Criteria.PropertiesContain" Change="NotifyCriteriaChanged" class="me-2" Placeholder="properties: UserId:123" />
 </div>
 
 @code {
