@@ -679,7 +679,7 @@ public sealed class LoggingIntegrationTests(TestContext testContext)
     {
         const string template = "Executed DbCommand ({elapsed}ms) [Parameters=[{parameters}], CommandType='{commandType}', CommandTimeout='{commandTimeout}']{newLine}{commandText}";
         const string sql = "-- GetOrders\n-- GetOrders\nSELECT o.\"Id\" FROM \"Orders\" AS o INNER JOIN \"Customers\" AS c ON o.\"CustomerId\" = c.\"Id\"";
-        using var host = CreateLinkedHost(shamble => shamble.UseEFCore());
+        using var host = CreateLinkedHost(shamble => shamble.TrackEFCoreQueries());
         await host.StartAsync(testContext.CancellationToken);
         var efLogger = host.Services.GetRequiredService<ILoggerFactory>().CreateLogger(EFCoreMiddleware.Category);
         efLogger.LogWarning(new EventId(20101, "CommandExecuted"), template, "1,234", "@p0='5'", "Text", 30, "\n", sql);
