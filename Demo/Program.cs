@@ -9,7 +9,7 @@ using ShambleLog.PostgreSQL;
 
 var builder = WebApplication.CreateBuilder(args);
 
-builder.Logging.AddShambleLog<ApplicationDbContext>(options => options.UseEFCore());
+builder.Logging.AddShambleLog<ApplicationDbContext>(options => options.TrackEFCoreQueries());
 
 // Radzen requirement
 builder.Services.AddRadzenComponents();
