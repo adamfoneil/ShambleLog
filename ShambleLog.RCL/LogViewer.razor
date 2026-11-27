@@ -2,6 +2,7 @@
 @using ShambleLog.Core.Entities
 @using ShambleLog.Core.Queries
 @using ShambleLog.RCL.Widgets
+@implements IDisposable
 
 <div class="log-viewer">
     <section class="me-2">
@@ -41,6 +42,7 @@
     private LogEntry[] _logEntries = [];
     private EFCoreSummaryQuery.Result[] _efCoreSummaries = [];
     private long _refreshVersion;
+    private CancellationTokenSource? _refreshCancellation;
 
     [Parameter, EditorRequired] public ScopedQueryRunner Queries { get; set; } = default!;
     [Parameter, EditorRequired] public CategoryLevelQuery CategoryLevelQuery { get; set; } = default!;
@@ -54,6 +56,10 @@
     private async Task Refresh()
     {
         var version = ++_refreshVersion;
+        var previous = _refreshCancellation;
+        using var cancellation = new CancellationTokenSource();
+        _refreshCancellation = cancellation;
+        previous?.Cancel();
         var criteria = new LogQuery.Criteria
         {
             Date = _criteria.Date,
@@ -67,20 +73,31 @@
         var skip = PageSize * _page;
         try
         {
-            var entries = await Queries.ExecuteAsync<LogQuery, LogEntry[]>(query => query.ExecuteAsync(criteria, skip, PageSize));
+            var entries = await Queries.ExecuteAsync<LogQuery, LogEntry[]>(query => query.ExecuteAsync(criteria, skip, PageSize, cancellation.Token));
             if (version != _refreshVersion)
                 return;
             _logEntries = entries;
             _filterError = null;
+            var summaries = await Queries.ExecuteAsync<EFCoreSummaryQuery, EFCoreSummaryQuery.Result[]>(query => query.ExecuteAsync(cancellationToken: cancellation.Token));
+            if (version == _refreshVersion)
+                _efCoreSummaries = summaries;
         }
         catch (FormatException ex)
         {
             if (version == _refreshVersion)
                 _filterError = ex.Message;
-            return;
         }
-        var summaries = await Queries.ExecuteAsync<EFCoreSummaryQuery, EFCoreSummaryQuery.Result[]>(query => query.ExecuteAsync());
-        if (version == _refreshVersion)
-            _efCoreSummaries = summaries;
+        catch (OperationCanceledException) when (cancellation.IsCancellationRequested) { }
+        finally
+        {
+            if (ReferenceEquals(_refreshCancellation, cancellation))
+                _refreshCancellation = null;
+        }
+    }
+
+    public void Dispose()
+    {
+        _refreshVersion++;
+        _refreshCancellation?.Cancel();
     }
 }

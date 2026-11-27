@@ -89,6 +89,27 @@ public sealed class ScopedQueryRunnerTests
         Assert.ThrowsExactly<ObjectDisposedException>(() => _ = context.Model);
     }
 
+    [TestMethod]
+    public async Task CancelledQuery_DisposesItsScope()
+    {
+        var services = new ServiceCollection();
+        services.AddDbContext<TestDbContext>(options => options.UseInMemoryDatabase(Guid.NewGuid().ToString()));
+        await using var provider = services.BuildServiceProvider();
+        var runner = new ScopedQueryRunner(provider.GetRequiredService<IServiceScopeFactory>());
+        using var cancellation = new CancellationTokenSource();
+        TestDbContext? context = null;
+        var operation = runner.ExecuteAsync<TestDbContext, int>(async db =>
+        {
+            context = db;
+            await Task.Delay(Timeout.Infinite, cancellation.Token);
+            return 0;
+        });
+        cancellation.Cancel();
+        await Assert.ThrowsAsync<OperationCanceledException>(() => operation);
+        Assert.IsNotNull(context);
+        Assert.ThrowsExactly<ObjectDisposedException>(() => _ = context.Model);
+    }
+
     private sealed class TestDbContext(DbContextOptions<TestDbContext> options) : DbContext(options), IEFCoreLoggingDbContext
     {
         public DbSet<LogEntry> LogEntries { get; set; } = null!;
