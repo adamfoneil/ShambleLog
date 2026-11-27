@@ -46,7 +46,7 @@ public abstract class LogQuery(ILoggingDbContext loggingDbContext)
     /// <summary>
     /// queries main log table, attaching any EFCoreEntry data if present, but does not query EFCoreEntries table directly
     /// </summary>
-    public async Task<LogEntry[]> ExecuteAsync(Criteria criteria, CancellationToken cancellationToken = default)
+    public async Task<LogEntry[]> ExecuteAsync(Criteria criteria, int skip, int take, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(criteria);
         var properties = ParseProperties(criteria.PropertiesContain);
@@ -55,7 +55,7 @@ public abstract class LogQuery(ILoggingDbContext loggingDbContext)
             query = query.Include(entry => entry.EFCoreEntry);
         var (filteredQuery, clientFilter) = FilterProperties(query, properties);
         filteredQuery = ApplyCriteria(filteredQuery, criteria);
-        var rows = await filteredQuery.ToArrayAsync(cancellationToken);
+        var rows = await filteredQuery.Skip(skip).Take(take).ToArrayAsync(cancellationToken);
         return clientFilter is null ? rows : [.. rows.Where(clientFilter)];
     }
 
@@ -144,7 +144,7 @@ public abstract class LogQuery(ILoggingDbContext loggingDbContext)
     /// <summary>
     /// queries EFCoreEntries table joined to main LogEntry table
     /// </summary>
-    public async Task<EFCoreEntry[]> ExecuteAsync(EFCoreCriteria efCoreCriteria, Criteria? criteria = null, CancellationToken cancellationToken = default)
+    public async Task<EFCoreEntry[]> ExecuteAsync(EFCoreCriteria efCoreCriteria, int skip, int take, Criteria? criteria = null, CancellationToken cancellationToken = default)
     {
         var efQueryDb = _loggingDbContext as IEFCoreLoggingDbContext ?? throw new NotSupportedException("EFCore query requires IEFCoreLoggingDbContext");
         ArgumentNullException.ThrowIfNull(efCoreCriteria);
@@ -168,7 +168,7 @@ public abstract class LogQuery(ILoggingDbContext loggingDbContext)
                      select new { Command = command, Log = log };
         var ascending = IsAscending(criteria?.TimeExpression);
         joined = ascending ? joined.OrderBy(row => row.Log.Timestamp) : joined.OrderByDescending(row => row.Log.Timestamp);
-        var rows = await joined.ToArrayAsync(cancellationToken);
+        var rows = await joined.Skip(skip).Take(take).ToArrayAsync(cancellationToken);
         if (clientFilter is not null)
             rows = [.. rows.Where(row => clientFilter(row.Log))];
         return [.. rows.Select(row =>
