@@ -1,0 +1,19 @@
+<div class="d-flex align-items-center my-2">
+	<RadzenButton Icon="arrow_left" Click="@((args) => Navigate(-1))" ButtonStyle="ButtonStyle.Info" Disabled="Value == 0" />
+	<span class="mx-3">@(Value + 1)</span>
+	<RadzenButton Icon="arrow_right" Click="@((args) => Navigate(1))" ButtonStyle="ButtonStyle.Info" />
+</div>
+
+@code {
+	[Parameter] public int Value { get; set; }
+	[Parameter] public bool Visible { get; set; } = true;
+	[Parameter] public EventCallback<int> ValueChanged { get; set; }
+	[Parameter] public EventCallback<int> Change { get; set; }
+
+	async Task Navigate(int direction)
+	{
+		Value += direction;
+		await ValueChanged.InvokeAsync(Value);
+		await Change.InvokeAsync(Value);
+	}
+}

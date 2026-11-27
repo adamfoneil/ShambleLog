@@ -133,7 +133,13 @@
     private readonly HashSet<long> _expandedRows = [];
     private readonly List<string> _pinnedProperties = [];
 
-    private string GridColumns(bool hasEFCoreEntries) => $"grid-template-columns: 28px 185px minmax(140px, 1fr) 100px minmax(250px, 3fr){(hasEFCoreEntries ? " 100px" : "")} repeat({_pinnedProperties.Count}, minmax(120px, 1fr)); min-width: {703 + (hasEFCoreEntries ? 100 : 0) + _pinnedProperties.Count * 120}px;";
+    private string GridColumns(bool hasEFCoreEntries)
+    {
+        var propertyColumns = _pinnedProperties.Count > 0
+            ? $" repeat({_pinnedProperties.Count}, minmax(120px, 1fr))"
+            : "";
+        return $"grid-template-columns: 28px 185px minmax(140px, 1fr) 100px minmax(250px, 3fr){(hasEFCoreEntries ? " 100px" : "")}{propertyColumns}; min-width: {703 + (hasEFCoreEntries ? 100 : 0) + _pinnedProperties.Count * 120}px;";
+    }
 
     private void ToggleExpand(long id)
     {

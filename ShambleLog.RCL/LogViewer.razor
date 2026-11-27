@@ -1,6 +1,7 @@
 
 @using ShambleLog.Core.Entities
 @using ShambleLog.Core.Queries
+@using ShambleLog.RCL.Widgets
 
 <div class="log-viewer">
     <section class="me-2">
@@ -19,10 +20,14 @@
     <section class="ms-2">
         <FilterBar @bind-Criteria="_criteria" @bind-Criteria:after="Refresh" EFCoreCriteria="_efCoreCriteria" />
         <LogEntries Data="_logEntries" />
+        <Pager @bind-Value="_page" Change="Refresh" />
     </section>
 </div>
 
 @code {
+    private const int PageSize = 50;
+    private int _page;
+
     private bool _efCoreEnabled = false;
     private LogQuery.Criteria _criteria = new();
     private LogQuery.EFCoreCriteria? _efCoreCriteria;
@@ -43,7 +48,7 @@
     private async Task Refresh()
     {
         _categorySummaries = await CategorySummaryQuery.ExecuteAsync();
-        _logEntries = await LogQuery.ExecuteAsync(_criteria);
+        _logEntries = await LogQuery.ExecuteAsync(_criteria, PageSize * _page, PageSize);
         _efCoreSummaries = await EFCoreSummaryQuery.ExecuteAsync();
     }
 }
