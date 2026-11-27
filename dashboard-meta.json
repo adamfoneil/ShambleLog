@@ -1,0 +1,12 @@
+{
+  "InternalLinks": [
+    {
+      "Text": "Publish Core",
+      "Href": "actions/workflows/publish-core.yml"
+    },
+    {
+      "Text": "Publish Postgres",
+      "Href": "actions/workflows/publish-postgres.yml"
+    }
+  ]
+}
