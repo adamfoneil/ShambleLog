@@ -8,7 +8,7 @@
         <RadzenAccordion>
             <Items>
                 <RadzenAccordionItem Text="Categories" Selected="true">
-                    <Categories CategoryLevelQuery="CategoryLevelQuery" CategorySummaryQuery="CategorySummaryQuery" />
+                    <Categories CategoryLevelQuery="CategoryLevelQuery" Queries="Queries" />
                 </RadzenAccordionItem>
                 <RadzenAccordionItem Text="EF Core" Visible="_efCoreEnabled">
 
@@ -40,11 +40,10 @@
     private string? _filterError;
     private LogEntry[] _logEntries = [];
     private EFCoreSummaryQuery.Result[] _efCoreSummaries = [];
+    private long _refreshVersion;
 
-    [Parameter, EditorRequired] public LogQuery LogQuery { get; set; }
-    [Parameter, EditorRequired] public CategorySummaryQuery CategorySummaryQuery { get; set; }
-    [Parameter, EditorRequired] public CategoryLevelQuery CategoryLevelQuery { get; set; }
-    [Parameter, EditorRequired] public EFCoreSummaryQuery EFCoreSummaryQuery { get; set; }
+    [Parameter, EditorRequired] public ScopedQueryRunner Queries { get; set; } = default!;
+    [Parameter, EditorRequired] public CategoryLevelQuery CategoryLevelQuery { get; set; } = default!;
 
     protected override async Task OnInitializedAsync()
     {
@@ -54,16 +53,34 @@
 
     private async Task Refresh()
     {
+        var version = ++_refreshVersion;
+        var criteria = new LogQuery.Criteria
+        {
+            Date = _criteria.Date,
+            TimeExpression = _criteria.TimeExpression,
+            CategoryContains = _criteria.CategoryContains,
+            Level = _criteria.Level,
+            TemplateContains = _criteria.TemplateContains,
+            MessageContains = _criteria.MessageContains,
+            PropertiesContain = _criteria.PropertiesContain
+        };
+        var skip = PageSize * _page;
         try
         {
-            _logEntries = await LogQuery.ExecuteAsync(_criteria, PageSize * _page, PageSize);
+            var entries = await Queries.ExecuteAsync<LogQuery, LogEntry[]>(query => query.ExecuteAsync(criteria, skip, PageSize));
+            if (version != _refreshVersion)
+                return;
+            _logEntries = entries;
             _filterError = null;
         }
         catch (FormatException ex)
         {
-            _filterError = ex.Message;
+            if (version == _refreshVersion)
+                _filterError = ex.Message;
             return;
         }
-        _efCoreSummaries = await EFCoreSummaryQuery.ExecuteAsync();
+        var summaries = await Queries.ExecuteAsync<EFCoreSummaryQuery, EFCoreSummaryQuery.Result[]>(query => query.ExecuteAsync());
+        if (version == _refreshVersion)
+            _efCoreSummaries = summaries;
     }
 }

@@ -70,7 +70,7 @@
 
 @code {
     [Parameter, EditorRequired] public CategoryLevelQuery CategoryLevelQuery { get; set; } = default!;
-    [Parameter, EditorRequired] public CategorySummaryQuery CategorySummaryQuery { get; set; } = default!;
+    [Parameter, EditorRequired] public ScopedQueryRunner Queries { get; set; } = default!;
 
     private CategoryLevel[] _rules = [];
     private CategorySummaryQuery.Result[] _summaries = [];
@@ -86,7 +86,7 @@
     private async Task RefreshCore()
     {
         _rules = await CategoryLevelQuery.ExecuteAsync();
-        _summaries = await CategorySummaryQuery.ExecuteAsync();
+        _summaries = await Queries.ExecuteAsync<CategorySummaryQuery, CategorySummaryQuery.Result[]>(query => query.ExecuteAsync());
     }
 
     private static bool IsDefault(string? category) => string.Equals(category, "Default", StringComparison.OrdinalIgnoreCase);

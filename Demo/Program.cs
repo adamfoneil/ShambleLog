@@ -19,6 +19,7 @@ builder.Services.AddRadzenComponents();
 builder.Services.AddTransient<LogQuery, PostgreSQLLogQuery>();
 builder.Services.AddTransient<CategorySummaryQuery>();
 builder.Services.AddTransient<CategoryLevelQuery>();
+builder.Services.AddTransient<ScopedQueryRunner>();
 builder.Services.AddTransient<EFCoreSummaryQuery>();
 
 var connectionString = builder.Configuration.GetConnectionString("Local");

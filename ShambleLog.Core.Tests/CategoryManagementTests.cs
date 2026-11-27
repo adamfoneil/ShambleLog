@@ -47,14 +47,14 @@ public sealed class CategoryManagementTests
             new LogEntry { Category = "Inventory.Processes", Level = LogLevel.Warning, Message = "process" },
             new LogEntry { Category = "inventory.queries.Read", Level = LogLevel.Debug, Message = "query" });
         await context.SaveChangesAsync();
-        var summaries = new CategorySummaryQuery(context);
+        var queries = new ScopedQueryRunner(services.GetRequiredService<IServiceScopeFactory>());
         await using var renderer = new HtmlRenderer(services, services.GetRequiredService<ILoggerFactory>());
         var html = await renderer.Dispatcher.InvokeAsync(async () =>
         {
             var rendered = await renderer.RenderComponentAsync<Categories>(ParameterView.FromDictionary(new Dictionary<string, object?>
             {
                 [nameof(Categories.CategoryLevelQuery)] = levels,
-                [nameof(Categories.CategorySummaryQuery)] = summaries
+                [nameof(Categories.Queries)] = queries
             }));
             return rendered.ToHtmlString();
         });
@@ -95,6 +95,7 @@ public sealed class CategoryManagementTests
         services.AddLogging();
         services.AddDbContext<TestDbContext>(options => options.UseInMemoryDatabase(databaseName));
         services.AddScoped<ILoggingDbContext>(provider => provider.GetRequiredService<TestDbContext>());
+        services.AddTransient<CategorySummaryQuery>();
         return services.BuildServiceProvider();
     }
 
