@@ -1,10 +1,11 @@
 @using Microsoft.Extensions.Logging
+@using Microsoft.EntityFrameworkCore
 @using ShambleLog.Core.Entities
 @using ShambleLog.Core.Queries
 
 <div class="d-flex gap-2 mb-2">
-    <button type="button" class="btn btn-sm btn-primary" @onclick="NewRule">Add category</button>
-    <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="Refresh">Refresh</button>
+    <button type="button" class="btn btn-sm btn-primary" @onclick="NewRule" disabled="@_busy">Add category</button>
+    <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="Refresh" disabled="@_busy">Refresh</button>
 </div>
 @if (_error is not null)
 {
@@ -24,8 +25,8 @@
                 }
             </select>
         </label>
-        <button type="button" class="btn btn-sm btn-primary" @onclick="Save">Save</button>
-        <button type="button" class="btn btn-sm btn-secondary" @onclick="Cancel">Cancel</button>
+        <button type="button" class="btn btn-sm btn-primary" @onclick="Save" disabled="@_busy">Save</button>
+        <button type="button" class="btn btn-sm btn-secondary" @onclick="Cancel" disabled="@_busy">Cancel</button>
     </div>
 }
 @foreach (var rule in _rules)
@@ -38,10 +39,10 @@
             {
                 <span class="badge bg-secondary">Temporary</span>
             }
-            <button type="button" class="btn btn-sm btn-outline-primary" @onclick="() => Edit(rule)">Edit</button>
+            <button type="button" class="btn btn-sm btn-outline-primary" @onclick="() => Edit(rule)" disabled="@_busy">Edit</button>
             @if (!IsDefault(rule.Category))
             {
-                <button type="button" class="btn btn-sm btn-outline-danger" @onclick="() => Delete(rule)">Delete</button>
+                <button type="button" class="btn btn-sm btn-outline-danger" @onclick="() => Delete(rule)" disabled="@_busy">Delete</button>
             }
         </div>
         @foreach (var summary in _summaries.Where(item => CategoryLevelResolver.FindEffective(_rules, item.Category) == rule).OrderBy(item => item.Category))
@@ -55,12 +56,12 @@
                 @if (rule.Level > LogLevel.Trace)
                 {
                     var higher = rule.Level - 1;
-                    <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="() => SetLevel(summary, higher)">Increase to @higher</button>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="() => SetLevel(summary, higher)" disabled="@_busy">Increase to @higher</button>
                 }
                 @if (rule.Level < LogLevel.None)
                 {
                     var lower = rule.Level + 1;
-                    <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="() => SetLevel(summary, lower)">Decrease to @lower</button>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="() => SetLevel(summary, lower)" disabled="@_busy">Decrease to @lower</button>
                 }
             </div>
         }
@@ -76,10 +77,13 @@
     private CategoryLevel? _editing;
     private string? _originalCategory;
     private string? _error;
+    private bool _busy;
 
     protected override Task OnInitializedAsync() => Refresh();
 
-    public async Task Refresh()
+    public Task Refresh() => Run(RefreshCore);
+
+    private async Task RefreshCore()
     {
         _rules = await CategoryLevelQuery.ExecuteAsync();
         _summaries = await CategorySummaryQuery.ExecuteAsync();
@@ -103,36 +107,38 @@
 
     private void Cancel() { _editing = null; _error = null; }
 
-    private async Task Save()
+    private Task Save() => Run(async () =>
     {
-        try
-        {
-            await CategoryLevelQuery.SaveAsync(_editing!, _originalCategory);
-            Cancel();
-            await Refresh();
-        }
-        catch (InvalidOperationException ex) { _error = ex.Message; }
-    }
+        await CategoryLevelQuery.SaveAsync(_editing!, _originalCategory);
+        Cancel();
+        await RefreshCore();
+    });
 
-    private async Task Delete(CategoryLevel rule)
+    private Task Delete(CategoryLevel rule) => Run(async () =>
     {
-        try
-        {
-            await CategoryLevelQuery.DeleteAsync(rule.Category);
-            Cancel();
-            await Refresh();
-        }
-        catch (InvalidOperationException ex) { _error = ex.Message; }
-    }
+        await CategoryLevelQuery.DeleteAsync(rule.Category);
+        Cancel();
+        await RefreshCore();
+    });
 
-    private async Task SetLevel(CategorySummaryQuery.Result summary, LogLevel level)
+    private Task SetLevel(CategorySummaryQuery.Result summary, LogLevel level) => Run(async () =>
     {
+        await CategoryLevelQuery.SetCategoryLevelAsync(summary.Category, level);
+        await RefreshCore();
+    });
+
+    private async Task Run(Func<Task> action)
+    {
+        if (_busy)
+            return;
+        _busy = true;
+        _error = null;
         try
         {
-            await CategoryLevelQuery.SetCategoryLevelAsync(summary.Category, level);
-            _error = null;
-            await Refresh();
+            await action();
         }
         catch (InvalidOperationException ex) { _error = ex.Message; }
+        catch (DbUpdateException) { _error = "Unable to save the category level. Refresh and try again."; }
+        finally { _busy = false; }
     }
 }
