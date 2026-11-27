@@ -23,9 +23,12 @@ public abstract class LogQuery(ILoggingDbContext loggingDbContext)
         /// because the default sort is descending by timestamp, but you may want to see the earliest log entries first for a given TraceId/RequestId.
         /// </summary>
         public string? TimeExpression { get; set; }
+        /// <summary>Case-insensitive substring filter; prefix with ! or - to exclude matches.</summary>
         public string? CategoryContains { get; set; }
         public LogLevel? Level { get; set; }
+        /// <summary>Substring filter; prefix with ! or - to exclude matches.</summary>
         public string? TemplateContains { get; set; }
+        /// <summary>Substring filter; prefix with ! or - to exclude matches.</summary>
         public string? MessageContains { get; set; }
         /// <summary>
         /// Parses to a dictionary that affects where clause against the JSONB properties column, e.g. {"UserId": "123"}.
@@ -188,15 +191,33 @@ public abstract class LogQuery(ILoggingDbContext loggingDbContext)
             query = query.Where(entry => entry.Timestamp < end);
         }
         if (!string.IsNullOrWhiteSpace(criteria.CategoryContains))
-            query = query.Where(entry => entry.Category.ToLower().Contains(criteria.CategoryContains.ToLower()));
+        {
+            var (value, exclude) = ParseContains(criteria.CategoryContains);
+            query = exclude
+                ? query.Where(entry => !entry.Category.ToLower().Contains(value.ToLower()))
+                : query.Where(entry => entry.Category.ToLower().Contains(value.ToLower()));
+        }
         if (criteria.Level is not null)
             query = query.Where(entry => entry.Level == criteria.Level.Value);
         if (!string.IsNullOrWhiteSpace(criteria.TemplateContains))
-            query = query.Where(entry => entry.Template.Contains(criteria.TemplateContains));
+        {
+            var (value, exclude) = ParseContains(criteria.TemplateContains);
+            query = exclude
+                ? query.Where(entry => !entry.Template.Contains(value))
+                : query.Where(entry => entry.Template.Contains(value));
+        }
         if (!string.IsNullOrWhiteSpace(criteria.MessageContains))
-            query = query.Where(entry => entry.Message.Contains(criteria.MessageContains));
+        {
+            var (value, exclude) = ParseContains(criteria.MessageContains);
+            query = exclude
+                ? query.Where(entry => !entry.Message.Contains(value))
+                : query.Where(entry => entry.Message.Contains(value));
+        }
         return ParseTimeExpression(query, criteria.TimeExpression ?? "", criteria.Date);
     }
+
+    private static (string Value, bool Exclude) ParseContains(string value) =>
+        value[0] is '!' or '-' ? (value[1..], true) : (value, false);
 
     private static bool IsAscending(string? expression) =>
         expression?.Trim().Equals("asc", StringComparison.OrdinalIgnoreCase) == true ||

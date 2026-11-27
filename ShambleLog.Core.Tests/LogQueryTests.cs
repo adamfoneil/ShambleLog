@@ -72,6 +72,71 @@ public sealed class LogQueryTests
     }
 
     [TestMethod]
+    public async Task ContainsCriteria_ExcludeMatchesBeforePaginationInBothQueryTypes()
+    {
+        await using var db = CreateContext();
+        var date = new DateTime(2026, 1, 15, 0, 0, 0, DateTimeKind.Utc);
+        var first = Entry(1, date.AddHours(1), "match message");
+        first.Category = "App.Match";
+        first.Template = "match template";
+        var second = Entry(2, date.AddHours(2), "other message");
+        second.Category = "Other";
+        second.Template = "other template";
+        var third = Entry(3, date.AddHours(3), "match message");
+        third.Category = "MATCH.Service";
+        third.Template = "match template";
+        foreach (var entry in new[] { first, second, third })
+            entry.EFCoreEntry = new EFCoreEntry { CommandText = entry.Message };
+        db.LogEntries.AddRange(first, second, third);
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        var query = new LogQuery(db);
+        Action<LogQuery.Criteria, string?>[] setters =
+        [
+            (criteria, value) => criteria.CategoryContains = value,
+            (criteria, value) => criteria.TemplateContains = value,
+            (criteria, value) => criteria.MessageContains = value
+        ];
+        foreach (var set in setters)
+        {
+            var criteria = new LogQuery.Criteria { Date = DateOnly.FromDateTime(date) };
+            foreach (var prefix in new[] { "!", "-" })
+            {
+                set(criteria, prefix + "match");
+                CollectionAssert.AreEqual(new long[] { 2 }, (await query.ExecuteAsync(criteria, 0, 1)).Select(row => row.Id).ToArray());
+                CollectionAssert.AreEqual(new long[] { 2 }, (await query.ExecuteAsync(new LogQuery.EFCoreCriteria(), 0, 1, criteria))
+                    .Select(row => row.LogEntryId).ToArray());
+                set(criteria, prefix + "missing");
+                CollectionAssert.AreEqual(new long[] { 3, 2, 1 }, (await query.ExecuteAsync(criteria, 0, int.MaxValue)).Select(row => row.Id).ToArray());
+                set(criteria, prefix);
+                Assert.IsEmpty(await query.ExecuteAsync(criteria, 0, int.MaxValue));
+            }
+            set(criteria, "match");
+            CollectionAssert.AreEqual(new long[] { 3, 1 }, (await query.ExecuteAsync(criteria, 0, int.MaxValue)).Select(row => row.Id).ToArray());
+            set(criteria, "-!match");
+            CollectionAssert.AreEqual(new long[] { 3, 2, 1 }, (await query.ExecuteAsync(criteria, 0, int.MaxValue)).Select(row => row.Id).ToArray());
+            set(criteria, "  ");
+            CollectionAssert.AreEqual(new long[] { 3, 2, 1 }, (await query.ExecuteAsync(criteria, 0, int.MaxValue)).Select(row => row.Id).ToArray());
+        }
+
+        var caseCriteria = new LogQuery.Criteria { Date = DateOnly.FromDateTime(date), CategoryContains = "!mAtCh" };
+        Assert.AreEqual(2L, Assert.ContainsSingle(await query.ExecuteAsync(caseCriteria, 0, int.MaxValue)).Id);
+        caseCriteria.CategoryContains = null;
+        caseCriteria.TemplateContains = "!MATCH";
+        CollectionAssert.AreEqual(new long[] { 3, 2, 1 }, (await query.ExecuteAsync(caseCriteria, 0, int.MaxValue)).Select(row => row.Id).ToArray());
+        caseCriteria.TemplateContains = null;
+        caseCriteria.MessageContains = "!MATCH";
+        CollectionAssert.AreEqual(new long[] { 3, 2, 1 }, (await query.ExecuteAsync(caseCriteria, 0, int.MaxValue)).Select(row => row.Id).ToArray());
+
+        var combined = new LogQuery.Criteria
+        {
+            Date = DateOnly.FromDateTime(date), CategoryContains = "!mAtCh", TemplateContains = "other", MessageContains = "-match"
+        };
+        Assert.AreEqual(2L, Assert.ContainsSingle(await query.ExecuteAsync(combined, 0, int.MaxValue)).Id);
+    }
+
+    [TestMethod]
     public async Task LogQuery_PropertiesMatchJsonValuesAndExclusions()
     {
         await using var db = CreateContext();
