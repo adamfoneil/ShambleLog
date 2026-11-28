@@ -5,7 +5,6 @@ using Microsoft.Extensions.DependencyInjection;
 using ShambleLog.Core.Entities;
 using ShambleLog.Core.Middleware;
 using ShambleLog.Core.Queries;
-using ShambleLog.RCL;
 
 namespace ShambleLog.Core.Tests;
 

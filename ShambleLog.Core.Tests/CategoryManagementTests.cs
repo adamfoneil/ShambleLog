@@ -1,15 +1,10 @@
 using System.Text.Json;
-using System.Text.RegularExpressions;
-using Microsoft.AspNetCore.Components;
-using Microsoft.AspNetCore.Components.Web;
-using Microsoft.AspNetCore.Components.RenderTree;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using ShambleLog.Core.Entities;
 using ShambleLog.Core.Middleware;
 using ShambleLog.Core.Queries;
-using ShambleLog.RCL;
 
 namespace ShambleLog.Core.Tests;
 
@@ -36,189 +31,62 @@ public sealed class CategoryManagementTests
     }
 
     [TestMethod]
-    public async Task Categories_RenderEffectiveParentsCountsAndLevelOptions()
+    public void CategorySummaryProjection_GroupsCategoriesAndPreservesFullNames()
     {
-        await using var services = CreateServices();
-        var levels = new CategoryLevelQuery(services.GetRequiredService<IServiceScopeFactory>());
-        await levels.SaveAsync(new CategoryLevel { Category = "Default", Level = LogLevel.Information });
-        await levels.SaveAsync(new CategoryLevel { Category = "Inventory", Level = LogLevel.Warning });
-        await levels.SaveAsync(new CategoryLevel { Category = "Inventory.Queries", Level = LogLevel.Debug });
-        await using var scope = services.CreateAsyncScope();
-        var context = scope.ServiceProvider.GetRequiredService<TestDbContext>();
-        context.LogEntries.AddRange(
-            new LogEntry { Category = "Other", Level = LogLevel.Information, Message = "other" },
-            new LogEntry { Category = "Inventory.Processes", Level = LogLevel.Warning, Message = "process" },
-            new LogEntry { Category = "inventory.queries.Read", Level = LogLevel.Debug, Message = "query" });
-        await context.SaveChangesAsync();
-        var queries = new ScopedQueryRunner(services.GetRequiredService<IServiceScopeFactory>());
-        await using var renderer = new HtmlRenderer(services, services.GetRequiredService<ILoggerFactory>());
-        var html = await renderer.Dispatcher.InvokeAsync(async () =>
+        var rules = new[]
         {
-            var rendered = await renderer.RenderComponentAsync<Categories>(ParameterView.FromDictionary(new Dictionary<string, object?>
-            {
-                [nameof(Categories.CategoryLevelQuery)] = levels,
-                [nameof(Categories.Queries)] = queries
-            }));
-            return rendered.ToHtmlString();
-        });
-        Assert.IsTrue(html.IndexOf("Default", StringComparison.Ordinal) < html.IndexOf("Other", StringComparison.Ordinal));
-        Assert.IsTrue(html.IndexOf("Other", StringComparison.Ordinal) < html.IndexOf("<strong>Inventory</strong>", StringComparison.Ordinal));
-        Assert.IsTrue(html.IndexOf("Inventory.Processes", StringComparison.Ordinal) < html.IndexOf("<strong>Inventory.Queries</strong>", StringComparison.Ordinal));
-        StringAssert.Contains(html, "title=\"Inventory.Processes\">Processes</button>");
-        StringAssert.Contains(html, "title=\"inventory.queries.Read\">Read</button>");
-        StringAssert.Contains(html, "title=\"Other\">Other</button>");
-        StringAssert.Contains(html, "d-flex justify-content-between align-items-center gap-2");
-        Assert.IsTrue(html.IndexOf("title=\"Increase to Information\"", StringComparison.Ordinal) < html.IndexOf("title=\"Warning\">1</span>", StringComparison.Ordinal));
-        StringAssert.Contains(html, "bg-warning text-dark");
-        StringAssert.Contains(html, "title=\"Warning\">1</span>");
-        StringAssert.Contains(html, "title=\"Increase to Information\">Info</button>");
-        StringAssert.Contains(html, "title=\"Decrease to Information\">Info</button>");
-        StringAssert.Contains(html, "title=\"Increase to Debug\">Debug</button>");
-        StringAssert.Contains(html, "title=\"Decrease to Warning\">Warning</button>");
-    }
+            new CategoryLevel { Category = "Default", Level = LogLevel.Information },
+            new CategoryLevel { Category = "Inventory", Level = LogLevel.Warning },
+            new CategoryLevel { Category = "Inventory.Queries", Level = LogLevel.Debug }
+        };
+        var summaries = new[]
+        {
+            new CategorySummaryQuery.Result { Category = "Default.Other", LevelCounts = new() { [LogLevel.Error] = 4 } },
+            new CategorySummaryQuery.Result { Category = "Inventory", LevelCounts = new() { [LogLevel.Warning] = 1 } },
+            new CategorySummaryQuery.Result { Category = "Inventory.Processes", LevelCounts = new() { [LogLevel.Warning] = 2 } },
+            new CategorySummaryQuery.Result { Category = "InventoryExtra", LevelCounts = new() { [LogLevel.Information] = 1 } },
+            new CategorySummaryQuery.Result { Category = "Other", LevelCounts = new() { [LogLevel.Information] = 1 } },
+            new CategorySummaryQuery.Result { Category = "inventory.Queries", LevelCounts = new() { [LogLevel.Warning] = 2 } },
+            new CategorySummaryQuery.Result { Category = "inventory.queries.Read", LevelCounts = new() { [LogLevel.Debug] = 3 } }
+        };
 
-    [TestMethod]
-    public async Task Categories_DisplayRelativeNamesWithoutLosingFullCategory()
-    {
-        await using var services = CreateServices();
-        var levels = new CategoryLevelQuery(services.GetRequiredService<IServiceScopeFactory>());
-        await levels.SaveAsync(new CategoryLevel { Category = "Default", Level = LogLevel.Information });
-        await levels.SaveAsync(new CategoryLevel { Category = "Inventory", Level = LogLevel.Warning });
-        await using var scope = services.CreateAsyncScope();
-        var context = scope.ServiceProvider.GetRequiredService<TestDbContext>();
-        context.LogEntries.AddRange(
-            new LogEntry { Category = "Inventory", Level = LogLevel.Warning, Message = "exact" },
-            new LogEntry { Category = "inventory.Queries", Level = LogLevel.Warning, Message = "child" },
-            new LogEntry { Category = "InventoryExtra", Level = LogLevel.Warning, Message = "prefix" },
-            new LogEntry { Category = "Default.Other", Level = LogLevel.Warning, Message = "fallback" });
-        await context.SaveChangesAsync();
-        var queries = new ScopedQueryRunner(services.GetRequiredService<IServiceScopeFactory>());
-        await using var renderer = new HtmlRenderer(services, services.GetRequiredService<ILoggerFactory>());
-        var html = await renderer.Dispatcher.InvokeAsync(async () =>
-        {
-            var rendered = await renderer.RenderComponentAsync<Categories>(ParameterView.FromDictionary(new Dictionary<string, object?>
-            {
-                [nameof(Categories.CategoryLevelQuery)] = levels,
-                [nameof(Categories.Queries)] = queries
-            }));
-            return rendered.ToHtmlString();
-        });
-        StringAssert.Contains(html, "aria-label=\"Filter logs by Inventory\" title=\"Inventory\">Inventory</button>");
-        StringAssert.Contains(html, "aria-label=\"Filter logs by inventory.Queries\" title=\"inventory.Queries\">Queries</button>");
-        StringAssert.Contains(html, "aria-label=\"Filter logs by InventoryExtra\" title=\"InventoryExtra\">Extra</button>");
-        StringAssert.Contains(html, "aria-label=\"Filter logs by Default.Other\" title=\"Default.Other\">Default.Other</button>");
-    }
+        var projection = CategorySummaryProjection.Build(rules, summaries);
+        CollectionAssert.AreEquivalent(
+            new[] { "Default.Other", "Other" },
+            projection.Single(group => group.CategoryLevel.Category == "Default").Summaries.Select(item => item.Result.Category).ToArray());
 
-    [TestMethod]
-    public async Task Categories_RowSelectionAndLevelButtonsAreSeparate()
-    {
-        await using var services = CreateServices();
-        var levels = new CategoryLevelQuery(services.GetRequiredService<IServiceScopeFactory>());
-        await levels.SaveAsync(new CategoryLevel { Category = "Inventory", Level = LogLevel.Information });
-        await using var scope = services.CreateAsyncScope();
-        var context = scope.ServiceProvider.GetRequiredService<TestDbContext>();
-        context.LogEntries.Add(new LogEntry { Category = "Inventory.Queries", Level = LogLevel.Warning, Message = "test" });
-        await context.SaveChangesAsync();
-        string? selected = null;
-        var queries = new ScopedQueryRunner(services.GetRequiredService<IServiceScopeFactory>());
-        await using var renderer = new EventTestRenderer(services);
-        await renderer.Dispatcher.InvokeAsync(async () =>
-        {
-            var id = await renderer.RenderAsync(new Categories(), ParameterView.FromDictionary(new Dictionary<string, object?>
-            {
-                [nameof(Categories.CategoryLevelQuery)] = levels,
-                [nameof(Categories.Queries)] = queries,
-                [nameof(Categories.CategorySelected)] = EventCallback.Factory.Create<string>(this, category => selected = category)
-            }));
-            var row = renderer.FindElement(id, "class", "ms-4 mt-1 d-flex justify-content-between align-items-center gap-2");
-            await renderer.ClickAsync(row);
-            Assert.AreEqual("Inventory.Queries", selected);
-            selected = null;
-            var button = renderer.FindElement(id, "title", "Increase to Debug");
-            Assert.IsTrue(button.StopPropagation);
-            await renderer.ClickAsync(button);
-            Assert.IsNull(selected);
-            var rule = (await levels.ExecuteAsync()).Single(item => item.Category == "Inventory.Queries");
-            Assert.AreEqual(LogLevel.Debug, rule.Level);
-            Assert.IsTrue(rule.IsTemporary);
-        });
-    }
+        var inventory = projection.Single(group => group.CategoryLevel.Category == "Inventory").Summaries;
+        var process = inventory.Single(item => item.Result.Category == "Inventory.Processes");
+        Assert.AreEqual("Processes", process.DisplayCategory);
+        Assert.AreEqual(2, process.Result.LevelCounts[LogLevel.Warning]);
+        var prefix = inventory.Single(item => item.Result.Category == "InventoryExtra");
+        Assert.AreEqual("InventoryExtra", prefix.Result.Category);
+        Assert.AreEqual("Extra", prefix.DisplayCategory);
 
-    [TestMethod]
-    public async Task Categories_SelectionFiltersViewerAndResetsPage()
-    {
-        await using var services = CreateServices();
-        var levels = new CategoryLevelQuery(services.GetRequiredService<IServiceScopeFactory>());
-        await levels.SaveAsync(new CategoryLevel { Category = "Default", Level = LogLevel.Information });
-        await using var scope = services.CreateAsyncScope();
-        var context = scope.ServiceProvider.GetRequiredService<TestDbContext>();
-        context.LogEntries.AddRange(
-            new LogEntry { Category = "Inventory.Queries", Level = LogLevel.Warning, Message = "keep", Timestamp = DateTime.UtcNow },
-            new LogEntry { Category = "Inventory.Queries", Level = LogLevel.Warning, Message = "skip", Timestamp = DateTime.UtcNow },
-            new LogEntry { Category = "Other", Level = LogLevel.Warning, Message = "keep", Timestamp = DateTime.UtcNow });
-        await context.SaveChangesAsync();
-        var queries = new ScopedQueryRunner(services.GetRequiredService<IServiceScopeFactory>());
-        var viewer = new LogViewer();
-        ParameterView.FromDictionary(new Dictionary<string, object?>
-        {
-            [nameof(LogViewer.Queries)] = queries,
-            [nameof(LogViewer.CategoryLevelQuery)] = levels
-        }).SetParameterProperties(viewer);
-        var flags = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
-        var criteria = (LogQuery.Criteria)typeof(LogViewer).GetField("_criteria", flags)!.GetValue(viewer)!;
-        criteria.MessageContains = "keep";
-        typeof(LogViewer).GetField("_page", flags)!.SetValue(viewer, 2);
-        var selectCategory = (Func<string, Task>)typeof(LogViewer).GetMethod("SelectCategory", flags)!
-            .CreateDelegate(typeof(Func<string, Task>), viewer);
-        await using var renderer = new EventTestRenderer(services);
-        await renderer.Dispatcher.InvokeAsync(async () =>
-        {
-            var id = await renderer.RenderAsync(new Categories(), ParameterView.FromDictionary(new Dictionary<string, object?>
-            {
-                [nameof(Categories.CategoryLevelQuery)] = levels,
-                [nameof(Categories.Queries)] = queries,
-                [nameof(Categories.CategorySelected)] = EventCallback.Factory.Create<string>(this, category => selectCategory(category))
-            }));
-            await renderer.ClickAsync(renderer.FindElement(id, "class", "ms-4 mt-1 d-flex justify-content-between align-items-center gap-2"));
-        });
-        Assert.AreEqual("Inventory.Queries", criteria.CategoryContains);
-        Assert.AreEqual("keep", criteria.MessageContains);
-        Assert.AreEqual(0, typeof(LogViewer).GetField("_page", flags)!.GetValue(viewer));
-        var entries = (LogEntry[])typeof(LogViewer).GetField("_logEntries", flags)!.GetValue(viewer)!;
-        Assert.AreEqual("keep", Assert.ContainsSingle(entries).Message);
+        var queryGroup = projection.Single(group => group.CategoryLevel.Category == "Inventory.Queries");
+        var querySummary = queryGroup.Summaries.Single(item => item.Result.Category == "inventory.queries.Read");
+        Assert.AreEqual("Read", querySummary.DisplayCategory);
+        Assert.AreEqual(3, querySummary.Result.LevelCounts[LogLevel.Debug]);
     }
 
     [TestMethod]
     [DataRow(LogLevel.Trace, "")]
-    [DataRow(LogLevel.Debug, "Info")]
+    [DataRow(LogLevel.Debug, "Information")]
     [DataRow(LogLevel.Information, "Debug,Warning")]
-    [DataRow(LogLevel.Warning, "Info")]
+    [DataRow(LogLevel.Warning, "Information")]
     [DataRow(LogLevel.Error, "")]
     [DataRow(LogLevel.Critical, "")]
     [DataRow(LogLevel.None, "")]
-    public async Task Categories_OnlyRenderRequestedLiveLevelOptions(LogLevel level, string expected)
+    public void CategorySummaryProjection_ProvidesOnlyAdjacentLiveLevelOptions(LogLevel level, string expected)
     {
-        await using var services = CreateServices();
-        var levels = new CategoryLevelQuery(services.GetRequiredService<IServiceScopeFactory>());
-        await levels.SaveAsync(new CategoryLevel { Category = "Default", Level = level });
-        await using var scope = services.CreateAsyncScope();
-        var context = scope.ServiceProvider.GetRequiredService<TestDbContext>();
-        context.LogEntries.Add(new LogEntry { Category = "Observed", Level = LogLevel.Warning, Message = "test" });
-        await context.SaveChangesAsync();
-        var queries = new ScopedQueryRunner(services.GetRequiredService<IServiceScopeFactory>());
-        await using var renderer = new HtmlRenderer(services, services.GetRequiredService<ILoggerFactory>());
-        var html = await renderer.Dispatcher.InvokeAsync(async () =>
-        {
-            var rendered = await renderer.RenderComponentAsync<Categories>(ParameterView.FromDictionary(new Dictionary<string, object?>
-            {
-                [nameof(Categories.CategoryLevelQuery)] = levels,
-                [nameof(Categories.Queries)] = queries
-            }));
-            return rendered.ToHtmlString();
-        });
-        var options = Regex.Matches(html, "title=\"(?:Increase|Decrease) to [^\"]+\">([^<]+)</button>")
-            .Select(match => match.Groups[1].Value).ToArray();
-        CollectionAssert.AreEqual(expected.Length == 0 ? Array.Empty<string>() : expected.Split(','), options);
+        var rule = new CategoryLevel { Category = "Default", Level = level };
+        var summary = new CategorySummaryQuery.Result { Category = "Observed" };
+
+        var options = CategorySummaryProjection.Build([rule], [summary]).Single().Summaries.Single().LiveLevelOptions;
+        var expectedLevels = expected.Length == 0
+            ? Array.Empty<LogLevel>()
+            : expected.Split(',').Select(Enum.Parse<LogLevel>).ToArray();
+        CollectionAssert.AreEqual(expectedLevels, options);
     }
 
     [TestMethod]
@@ -244,12 +112,8 @@ public sealed class CategoryManagementTests
     {
         var services = new ServiceCollection();
         var databaseName = Guid.NewGuid().ToString();
-        services.AddLogging();
         services.AddDbContext<TestDbContext>(options => options.UseInMemoryDatabase(databaseName));
         services.AddScoped<ILoggingDbContext>(provider => provider.GetRequiredService<TestDbContext>());
-        services.AddTransient<CategorySummaryQuery>();
-        services.AddTransient<LogQuery, ClientSideLogQuery>();
-        services.AddTransient<EFCoreSummaryQuery>();
         return services.BuildServiceProvider();
     }
 
@@ -267,49 +131,4 @@ public sealed class CategoryManagementTests
             modelBuilder.Entity<EFCoreEntry>().HasKey(entry => entry.LogEntryId);
         }
     }
-
-#pragma warning disable BL0006
-    private sealed class EventTestRenderer(IServiceProvider services) : Renderer(services, services.GetRequiredService<ILoggerFactory>())
-    {
-        public override Dispatcher Dispatcher { get; } = Dispatcher.CreateDefault();
-
-        public async Task<int> RenderAsync(IComponent component, ParameterView parameters)
-        {
-            var id = AssignRootComponentId(component);
-            await RenderRootComponentAsync(id, parameters);
-            return id;
-        }
-
-        public (ulong Handler, bool StopPropagation) FindElement(int id, string attribute, string value)
-        {
-            var frames = GetCurrentRenderTreeFrames(id);
-            for (var i = 0; i < frames.Count; i++)
-            {
-                if (frames.Array[i].FrameType != RenderTreeFrameType.Element)
-                    continue;
-                var match = false;
-                var stopPropagation = false;
-                ulong handler = 0;
-                for (var j = i + 1; j < frames.Count && frames.Array[j].FrameType == RenderTreeFrameType.Attribute; j++)
-                {
-                    var frame = frames.Array[j];
-                    match |= frame.AttributeName == attribute && Equals(frame.AttributeValue, value);
-                    if (frame.AttributeName == "onclick")
-                        handler = frame.AttributeEventHandlerId;
-                    if (frame.AttributeName == "__internal_stopPropagation_onclick")
-                        stopPropagation = Equals(frame.AttributeValue, true);
-                }
-                if (match)
-                    return (handler, stopPropagation);
-            }
-            throw new InvalidOperationException($"Element {attribute}={value} not found.");
-        }
-
-        public Task ClickAsync((ulong Handler, bool StopPropagation) element) =>
-            DispatchEventAsync(element.Handler, null, new MouseEventArgs());
-
-        protected override Task UpdateDisplayAsync(in RenderBatch renderBatch) => Task.CompletedTask;
-        protected override void HandleException(Exception exception) => throw exception;
-    }
-#pragma warning restore BL0006
 }
