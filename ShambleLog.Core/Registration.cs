@@ -3,15 +3,17 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using ShambleLog.Core.Queries;
 
 namespace ShambleLog.Core;
 
 internal static class Registration
 {
-    public static ILoggingBuilder Add<TContext>(
+    public static ILoggingBuilder Add<TContext, TLogQuery>(
         ILoggingBuilder builder,
         Action<ShambleLogBuilder>? configure)
         where TContext : DbContext, ILoggingDbContext
+        where TLogQuery : LogQuery
     {
         ArgumentNullException.ThrowIfNull(builder);
 
@@ -25,6 +27,12 @@ internal static class Registration
         builder.Services.TryAddSingleton<ICategoryLevelInitializer, CategoryLevelInitializer>();
         builder.Services.TryAddSingleton<LogEntryWriter>();
         builder.Services.AddHostedService(services => services.GetRequiredService<LogEntryWriter>());
+
+        builder.Services.AddTransient<CategorySummaryQuery>();
+        builder.Services.AddTransient<CategoryLevelQuery>();
+        builder.Services.AddTransient<ScopedQueryRunner>();
+        builder.Services.AddTransient<EFCoreMetricsQuery>();
+        builder.Services.AddTransient<LogQuery, TLogQuery>();
 
         if (configure is not null)
         {
