@@ -8,8 +8,8 @@
     <section class="me-2">
         <RadzenAccordion>
             <Items>
-                <RadzenAccordionItem Text="Categories">
-                    <Categories CategoryLevelQuery="CategoryLevelQuery" Queries="Queries" />
+                <RadzenAccordionItem Text="Categories" Selected="true">
+                    <Categories CategoryLevelQuery="CategoryLevelQuery" Queries="Queries" CategorySelected="SelectCategory" />
                 </RadzenAccordionItem>
                 <RadzenAccordionItem Text="EF Core" Visible="_efCoreEnabled">
 
@@ -50,6 +50,13 @@
     protected override async Task OnInitializedAsync()
     {
         await Refresh();
+    }
+
+    private Task SelectCategory(string category)
+    {
+        _criteria.CategoryContains = category;
+        _page = 0;
+        return Refresh();
     }
 
 
