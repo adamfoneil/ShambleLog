@@ -1,10 +1,30 @@
-<Project Sdk="Microsoft.NET.Sdk.Razor">
+﻿<Project Sdk="Microsoft.NET.Sdk.Razor">
 
   <PropertyGroup>
     <TargetFramework>net11.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+    <GeneratePackageOnBuild>True</GeneratePackageOnBuild>
+    <PackageId>ShambleLog.RCL</PackageId>
+    <Title>ShambleLog Razor Class Library</Title>
+    <Version>1.0.0</Version>
+    <Company>Adam O'Neil</Company>
+    <Copyright>Copyright (c) 2026 Adam O'Neil</Copyright>
+    <PackageProjectUrl>https://github.com/adamfoneil/ShambleLog</PackageProjectUrl>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <RepositoryUrl>https://github.com/adamfoneil/ShambleLog</RepositoryUrl>
+    <PackageTags>razor-class-library; logging</PackageTags>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <Authors>Adam O'Neil</Authors>
+    <Description>A log viewer UI made with Radzen Components used with ShambleLog</Description>
   </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="..\README.md">
+      <Pack>True</Pack>
+      <PackagePath>\</PackagePath>
+    </None>
+  </ItemGroup>
 
 
   <ItemGroup>
