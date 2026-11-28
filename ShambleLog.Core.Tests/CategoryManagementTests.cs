@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Web;
 using Microsoft.EntityFrameworkCore;
@@ -62,11 +63,44 @@ public sealed class CategoryManagementTests
         Assert.IsTrue(html.IndexOf("Other", StringComparison.Ordinal) < html.IndexOf("<strong>Inventory</strong>", StringComparison.Ordinal));
         Assert.IsTrue(html.IndexOf("Inventory.Processes", StringComparison.Ordinal) < html.IndexOf("<strong>Inventory.Queries</strong>", StringComparison.Ordinal));
         StringAssert.Contains(html, "bg-warning text-dark");
-        StringAssert.Contains(html, "Warning: 1");
-        StringAssert.Contains(html, "Increase to Information");
-        StringAssert.Contains(html, "Decrease to Information");
-        StringAssert.Contains(html, "Increase to Debug");
-        StringAssert.Contains(html, "Decrease to Warning");
+        StringAssert.Contains(html, "title=\"Warning\">1</span>");
+        StringAssert.Contains(html, "title=\"Increase to Information\">Info</button>");
+        StringAssert.Contains(html, "title=\"Decrease to Information\">Info</button>");
+        StringAssert.Contains(html, "title=\"Increase to Debug\">Debug</button>");
+        StringAssert.Contains(html, "title=\"Decrease to Warning\">Warning</button>");
+    }
+
+    [TestMethod]
+    [DataRow(LogLevel.Trace, "")]
+    [DataRow(LogLevel.Debug, "Info")]
+    [DataRow(LogLevel.Information, "Debug,Warning")]
+    [DataRow(LogLevel.Warning, "Info")]
+    [DataRow(LogLevel.Error, "")]
+    [DataRow(LogLevel.Critical, "")]
+    [DataRow(LogLevel.None, "")]
+    public async Task Categories_OnlyRenderRequestedLiveLevelOptions(LogLevel level, string expected)
+    {
+        await using var services = CreateServices();
+        var levels = new CategoryLevelQuery(services.GetRequiredService<IServiceScopeFactory>());
+        await levels.SaveAsync(new CategoryLevel { Category = "Default", Level = level });
+        await using var scope = services.CreateAsyncScope();
+        var context = scope.ServiceProvider.GetRequiredService<TestDbContext>();
+        context.LogEntries.Add(new LogEntry { Category = "Observed", Level = LogLevel.Warning, Message = "test" });
+        await context.SaveChangesAsync();
+        var queries = new ScopedQueryRunner(services.GetRequiredService<IServiceScopeFactory>());
+        await using var renderer = new HtmlRenderer(services, services.GetRequiredService<ILoggerFactory>());
+        var html = await renderer.Dispatcher.InvokeAsync(async () =>
+        {
+            var rendered = await renderer.RenderComponentAsync<Categories>(ParameterView.FromDictionary(new Dictionary<string, object?>
+            {
+                [nameof(Categories.CategoryLevelQuery)] = levels,
+                [nameof(Categories.Queries)] = queries
+            }));
+            return rendered.ToHtmlString();
+        });
+        var options = Regex.Matches(html, "title=\"(?:Increase|Decrease) to [^\"]+\">([^<]+)</button>")
+            .Select(match => match.Groups[1].Value).ToArray();
+        CollectionAssert.AreEqual(expected.Length == 0 ? Array.Empty<string>() : expected.Split(','), options);
     }
 
     [TestMethod]

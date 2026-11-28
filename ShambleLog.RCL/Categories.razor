@@ -53,15 +53,21 @@
                 {
                     <span class="badge @CssUtil.GetLogLevelBadgeClass(count.Key)" title="@count.Key">@count.Value</span>
                 }
-                @if (rule.Level > LogLevel.Trace)
+                @if (rule.Level == LogLevel.Information)
                 {
-                    var higher = rule.Level - 1;
-                    <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="() => SetLevel(summary, higher)" disabled="@_busy">Increase to @higher</button>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="() => SetLevel(summary, LogLevel.Debug)" disabled="@_busy" aria-label="Increase @summary.Category to Debug" title="Increase to Debug">Debug</button>
                 }
-                @if (rule.Level < LogLevel.None)
+                @if (rule.Level == LogLevel.Warning)
                 {
-                    var lower = rule.Level + 1;
-                    <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="() => SetLevel(summary, lower)" disabled="@_busy">Decrease to @lower</button>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="() => SetLevel(summary, LogLevel.Information)" disabled="@_busy" aria-label="Increase @summary.Category to Information" title="Increase to Information">Info</button>
+                }
+                @if (rule.Level == LogLevel.Debug)
+                {
+                    <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="() => SetLevel(summary, LogLevel.Information)" disabled="@_busy" aria-label="Decrease @summary.Category to Information" title="Decrease to Information">Info</button>
+                }
+                @if (rule.Level == LogLevel.Information)
+                {
+                    <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="() => SetLevel(summary, LogLevel.Warning)" disabled="@_busy" aria-label="Decrease @summary.Category to Warning" title="Decrease to Warning">Warning</button>
                 }
             </div>
         }
