@@ -7,7 +7,7 @@
     <GeneratePackageOnBuild>True</GeneratePackageOnBuild>
     <PackageId>ShambleLog.PostgreSQL</PackageId>
     <Title>ShambleLog.PostgreSQL</Title>
-    <Version>0.9.2-alpha</Version>
+    <Version>1.0.1</Version>
     <Authors>Adam O'Neil</Authors>
     <Company>Adam O'Neil</Company>
     <Description>An EF Core-based logger targeting Postgres, ILogger&lt;T&gt; compatible</Description>
@@ -30,7 +30,7 @@
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
     <PackageReference Include="Microsoft.EntityFrameworkCore" Version="11.0.0" />
     <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="11.0.0" />
-    <PackageReference Include="ShambleLog.Core" Version="1.0.0" />
+    <PackageReference Include="ShambleLog.Core" Version="1.0.1" />
   </ItemGroup>
 
 </Project>
