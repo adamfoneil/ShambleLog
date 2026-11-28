@@ -110,7 +110,7 @@
     private static string DisplayCategory(string category, CategoryLevel rule) =>
         !IsDefault(rule.Category) && category.Length > rule.Category.Length
             && category.StartsWith(rule.Category, StringComparison.OrdinalIgnoreCase)
-            ? category[rule.Category.Length..]
+            ? category[rule.Category.Length..].TrimStart('.')
             : category;
 
     private void NewRule()
