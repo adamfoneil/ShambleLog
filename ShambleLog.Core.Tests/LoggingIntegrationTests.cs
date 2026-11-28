@@ -9,6 +9,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using ShambleLog.Core.Entities;
 using ShambleLog.Core.Middleware;
+using ShambleLog.Core.Queries;
 
 namespace ShambleLog.Core.Tests;
 
@@ -426,6 +427,22 @@ public sealed class LoggingIntegrationTests(TestContext testContext)
 
     [TestMethod]
     [Timeout(10000, CooperativeCancellation = true)]
+    public async Task AddShambleLog_RegistersConfiguredLogQuery()
+    {
+        using var host = CreateHost();
+        await using var scope = host.Services.CreateAsyncScope();
+        var context = scope.ServiceProvider.GetRequiredService<LoggingTestDbContext>();
+        context.LogEntries.Add(new LogEntry { Timestamp = DateTime.UtcNow, Message = "query entry" });
+        await context.SaveRulesAsync(testContext.CancellationToken);
+
+        var query = scope.ServiceProvider.GetRequiredService<LogQuery>();
+        Assert.IsInstanceOfType<ClientSideLogQuery>(query);
+        var entries = await query.ExecuteAsync(new LogQuery.Criteria(), 0, 10, testContext.CancellationToken);
+        Assert.AreEqual("query entry", Assert.ContainsSingle(entries).Message);
+    }
+
+    [TestMethod]
+    [Timeout(10000, CooperativeCancellation = true)]
     public async Task AddShambleLog_WithPurgeOptions_RemovesExpiredEntries()
     {
         using var host = CreateHost(retentionPeriodOptions: new RetentionPeriodOptions
@@ -522,13 +539,13 @@ public sealed class LoggingIntegrationTests(TestContext testContext)
             {
                 if (middlewareFirst)
                 {
-                    logging.AddShambleLog<LoggingTestDbContext>(shamble => shamble.Use((context, next) => next(context)).WithRetentionPeriod(purgeOptions));
-                    logging.AddShambleLog<LoggingTestDbContext>();
+                    logging.AddShambleLog<LoggingTestDbContext, ClientSideLogQuery>(shamble => shamble.Use((context, next) => next(context)).WithRetentionPeriod(purgeOptions));
+                    logging.AddShambleLog<LoggingTestDbContext, ClientSideLogQuery>();
                 }
                 else
                 {
-                    logging.AddShambleLog<LoggingTestDbContext>();
-                    logging.AddShambleLog<LoggingTestDbContext>(shamble => shamble.Use((context, next) => next(context)).WithRetentionPeriod(purgeOptions));
+                    logging.AddShambleLog<LoggingTestDbContext, ClientSideLogQuery>();
+                    logging.AddShambleLog<LoggingTestDbContext, ClientSideLogQuery>(shamble => shamble.Use((context, next) => next(context)).WithRetentionPeriod(purgeOptions));
                 }
             })
             .ConfigureServices(services =>
@@ -780,9 +797,9 @@ public sealed class LoggingIntegrationTests(TestContext testContext)
                 if (applyLoggingConfiguration)
                     logging.AddConfiguration(context.Configuration.GetSection("Logging"));
                 logging.AddProvider(warnings);
-                logging.AddShambleLog<LoggingTestDbContext>();
+                logging.AddShambleLog<LoggingTestDbContext, ClientSideLogQuery>();
                 if (registerTwice)
-                    logging.AddShambleLog<LoggingTestDbContext>();
+                    logging.AddShambleLog<LoggingTestDbContext, ClientSideLogQuery>();
             })
             .ConfigureServices(services =>
             {
@@ -819,14 +836,14 @@ public sealed class LoggingIntegrationTests(TestContext testContext)
             {
                 logging.ClearProviders();
                 logging.SetMinimumLevel(LogLevel.Warning);
-                logging.AddShambleLog<LinkedLoggingDbContext>(shamble =>
+                logging.AddShambleLog<LinkedLoggingDbContext, ClientSideLogQuery>(shamble =>
                 {
                     configure(shamble);
                     if (retentionPeriodOptions is not null)
                         shamble.WithRetentionPeriod(retentionPeriodOptions);
                 });
                 if (registerTwice)
-                    logging.AddShambleLog<LinkedLoggingDbContext>();
+                    logging.AddShambleLog<LinkedLoggingDbContext, ClientSideLogQuery>();
             })
             .ConfigureServices(services =>
             {
@@ -849,13 +866,13 @@ public sealed class LoggingIntegrationTests(TestContext testContext)
             {
                 logging.ClearProviders();
                 logging.SetMinimumLevel(LogLevel.Warning);
-                logging.AddShambleLog<LoggingTestDbContext>(shamble =>
+                logging.AddShambleLog<LoggingTestDbContext, ClientSideLogQuery>(shamble =>
                 {
                     if (retentionPeriodOptions is not null)
                         shamble.WithRetentionPeriod(retentionPeriodOptions);
                 });
                 if (registerTwice)
-                    logging.AddShambleLog<LoggingTestDbContext>();
+                    logging.AddShambleLog<LoggingTestDbContext, ClientSideLogQuery>();
             })
             .ConfigureServices(services =>
             {

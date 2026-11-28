@@ -13,6 +13,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using ShambleLog.Core.Entities;
+using ShambleLog.Core.Queries;
 
 namespace ShambleLog.Core.Tests;
 
@@ -96,7 +97,7 @@ public sealed class HttpLoggingTests(TestContext testContext)
         {
             logging.ClearProviders();
             logging.SetMinimumLevel(LogLevel.Information);
-            logging.AddShambleLog<TestDbContext>(shamble =>
+            logging.AddShambleLog<TestDbContext, ClientSideLogQuery>(shamble =>
             {
                 if (identity) shamble.WithIdentityUser();
                 if (requests) shamble.WithHttpRequestLogging().WithHttpRequestLogging();
