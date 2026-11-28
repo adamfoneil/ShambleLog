@@ -41,7 +41,6 @@
     private string? _filterError;
     private LogEntry[] _logEntries = [];
     private DateOnly? _appliedDate;
-    private EFCoreSummaryQuery.Result[] _efCoreSummaries = [];
     private long _refreshVersion;
     private CancellationTokenSource? _refreshCancellation;
 
@@ -92,9 +91,6 @@
             _logEntries = entries;
             _appliedDate = criteria.Date;
             _filterError = null;
-            var summaries = await Queries.ExecuteAsync<EFCoreSummaryQuery, EFCoreSummaryQuery.Result[]>(query => query.ExecuteAsync(cancellationToken: cancellation.Token));
-            if (version == _refreshVersion)
-                _efCoreSummaries = summaries;
         }
         catch (FormatException ex)
         {

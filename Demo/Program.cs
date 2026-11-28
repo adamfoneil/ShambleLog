@@ -19,7 +19,7 @@ builder.Services.AddTransient<LogQuery, PostgreSQLLogQuery>();
 builder.Services.AddTransient<CategorySummaryQuery>();
 builder.Services.AddTransient<CategoryLevelQuery>();
 builder.Services.AddTransient<ScopedQueryRunner>();
-builder.Services.AddTransient<EFCoreSummaryQuery>();
+builder.Services.AddTransient<EFCoreMetricsQuery>();
 
 var connectionString = builder.Configuration.GetConnectionString("Local");
 if (string.IsNullOrWhiteSpace(connectionString))

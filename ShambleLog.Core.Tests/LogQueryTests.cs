@@ -322,16 +322,16 @@ public sealed class LogQueryTests
         var today = DateTime.UtcNow.Date;
         var current = Entry(1, today, "current");
         var previous = Entry(2, today.AddDays(-1), "previous");
-        current.EFCoreEntry = new EFCoreEntry { ElapsedMs = 100 };
-        previous.EFCoreEntry = new EFCoreEntry { ElapsedMs = 200 };
+        current.EFCoreEntry = new EFCoreEntry { Tags = ["tag"], ElapsedMs = 100 };
+        previous.EFCoreEntry = new EFCoreEntry { Tags = ["tag"], ElapsedMs = 200 };
         db.LogEntries.AddRange(current, previous);
         await db.SaveChangesAsync();
         db.ChangeTracker.Clear();
 
         var category = Assert.ContainsSingle(await new CategorySummaryQuery(db).ExecuteAsync(timeExpression: "0000:2359"));
         Assert.AreEqual(1, category.LevelCounts[LogLevel.Warning]);
-        var commands = Assert.ContainsSingle(await new EFCoreSummaryQuery(db).ExecuteAsync("0000:2359"));
-        Assert.AreEqual(1, commands.TotalCalls);
+        var commands = Assert.ContainsSingle(await new EFCoreMetricsQuery(db).ExecuteAsync(null, "0000:2359", default));
+        Assert.AreEqual(1, commands.Count);
         Assert.AreEqual(100d, commands.AvgElapsedMs);
     }
 
@@ -424,53 +424,82 @@ public sealed class LogQueryTests
     }
 
     [TestMethod]
-    public async Task EFCoreSummaryQuery_AggregatesCommandsAndFiltersByTimeExpression()
+    public async Task EFCoreMetricsQuery_AggregatesEachDistinctTagAndTable()
     {
         await using var db = CreateContext();
-        var now = DateTime.UtcNow;
-        var first = Entry(1, now.AddMinutes(-10), "first");
-        first.EFCoreEntry = new EFCoreEntry
+        var day = new DateTime(2020, 1, 15, 0, 0, 0, DateTimeKind.Utc);
+        for (var i = 1; i <= 20; i++)
         {
-            TargetTables = ["Users", " Orders "],
-            Tags = ["report"],
-            ElapsedMs = 100
-        };
-        var second = Entry(2, now.AddMinutes(-5), "second");
-        second.EFCoreEntry = new EFCoreEntry
-        {
-            TargetTables = ["orders", "users", "USERS"],
-            Tags = ["REPORT"],
-            ElapsedMs = 200
-        };
-        var older = Entry(3, now.AddMinutes(-90), "older");
-        older.EFCoreEntry = new EFCoreEntry { ElapsedMs = 300 };
-        var future = Entry(4, now.AddMinutes(10), "future");
-        future.EFCoreEntry = new EFCoreEntry { TargetTables = ["Future"], ElapsedMs = 400 };
-        db.LogEntries.AddRange(first, second, older, future);
+            var entry = Entry(i, day.AddHours(10), "command");
+            entry.EFCoreEntry = new EFCoreEntry
+            {
+                Tags = i == 1 ? [" Report ", "REPORT", "", "Shared"] : ["report"],
+                TargetTables = i == 1 ? [" Users ", "USERS", "Shared"] : ["users"],
+                ElapsedMs = i
+            };
+            db.LogEntries.Add(entry);
+        }
+        var unnamed = Entry(21, day.AddHours(10), "unnamed");
+        unnamed.EFCoreEntry = new EFCoreEntry { ElapsedMs = 1000 };
+        db.LogEntries.Add(unnamed);
+        db.LogEntries.Add(Entry(22, day.AddHours(10), "not a command"));
         await db.SaveChangesAsync();
         db.ChangeTracker.Clear();
 
-        var query = new EFCoreSummaryQuery(db);
-        var all = await query.ExecuteAsync();
-        Assert.AreEqual(3, all.Length);
-        Assert.AreEqual(2, all[0].TotalCalls);
-        Assert.AreEqual(150d, all[0].AvgElapsedMs);
-        CollectionAssert.AreEqual(new[] { "Orders", "Users" }, all[0].FromTables);
-        CollectionAssert.AreEqual(new[] { "report" }, all[0].QueryTags);
-        Assert.AreEqual(100L, all[0].MinElapsedMs);
-        Assert.AreEqual(200L, all[0].MaxElapsedMs);
-        Assert.AreEqual(now.AddMinutes(-5), all[0].LatestTimestamp);
-        CollectionAssert.AreEqual(new[] { "Future" }, all[1].FromTables);
-        Assert.AreEqual(400d, all[1].AvgElapsedMs);
+        var query = new EFCoreMetricsQuery(db);
+        var results = await query.ExecuteAsync(null, null, default);
+        Assert.AreEqual(4, results.Length);
+        foreach (var (type, name) in new[] { (EFCoreMetricsQueryType.Tag, "report"), (EFCoreMetricsQueryType.Table, "users") })
+        {
+            var metric = results.Single(result => result.Type == type && result.Name.Equals(name, StringComparison.OrdinalIgnoreCase));
+            Assert.AreEqual(20, metric.Count);
+            Assert.AreEqual(1L, metric.MinElapsedMs);
+            Assert.AreEqual(20L, metric.MaxElapsedMs);
+            Assert.AreEqual(10.5d, metric.AvgElapsedMs);
+            Assert.AreEqual(19d, metric.P95ElapsedMs);
+        }
+        foreach (var metric in results.Where(result => result.Name == "Shared"))
+        {
+            Assert.AreEqual(1, metric.Count);
+            Assert.AreEqual(1d, metric.P95ElapsedMs);
+        }
+        Assert.AreEqual(2, results.Count(result => result.Name == "Shared"));
+    }
 
-        var recent = Assert.ContainsSingle(await query.ExecuteAsync("30m"));
-        Assert.AreEqual(2, recent.TotalCalls);
-        Assert.AreEqual(150d, recent.AvgElapsedMs);
-        await Assert.ThrowsExactlyAsync<FormatException>(() => query.ExecuteAsync("2:1h"));
+    [TestMethod]
+    public async Task EFCoreMetricsQuery_FiltersDateAndTimeAndPropagatesErrors()
+    {
+        await using var db = CreateContext();
+        var day = new DateTime(2020, 1, 15, 0, 0, 0, DateTimeKind.Utc);
+        var times = new[] { day.AddTicks(-1), day, day.AddHours(9).AddMinutes(30),
+            day.AddHours(13).AddMinutes(30), day.AddHours(13).AddMinutes(30).AddTicks(1), day.AddDays(1),
+            DateTime.UtcNow.AddMinutes(-10), DateTime.UtcNow.AddMinutes(-90), DateTime.UtcNow.AddMinutes(10) };
+        for (var i = 0; i < times.Length; i++)
+        {
+            var entry = Entry(i + 1, times[i], "command");
+            entry.EFCoreEntry = new EFCoreEntry { Tags = ["tag"], ElapsedMs = i + 1 };
+            db.LogEntries.Add(entry);
+        }
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
 
+        var query = new EFCoreMetricsQuery(db);
+        var date = DateOnly.FromDateTime(day);
+        Assert.AreEqual(9, Assert.ContainsSingle(await query.ExecuteAsync(null, null, default)).Count);
+        Assert.AreEqual(4, Assert.ContainsSingle(await query.ExecuteAsync(date, null, default)).Count);
+        var range = Assert.ContainsSingle(await query.ExecuteAsync(date, "0930:1330:asc", default));
+        Assert.AreEqual(2, range.Count);
+        Assert.AreEqual(3L, range.MinElapsedMs);
+        Assert.AreEqual(4L, range.MaxElapsedMs);
+        Assert.AreEqual(4d, range.P95ElapsedMs);
+        Assert.AreEqual(3, Assert.ContainsSingle(await query.ExecuteAsync(date, "0930", default)).Count);
+        Assert.IsEmpty(await query.ExecuteAsync(date, "30m", default));
+        Assert.AreEqual(1, Assert.ContainsSingle(await query.ExecuteAsync(null, "30m", default)).Count);
+        Assert.AreEqual(1, Assert.ContainsSingle(await query.ExecuteAsync(null, "1:2h", default)).Count);
+        await Assert.ThrowsExactlyAsync<FormatException>(() => query.ExecuteAsync(null, "2:1h", default));
         using var cancellation = new CancellationTokenSource();
         cancellation.Cancel();
-        await Assert.ThrowsAsync<OperationCanceledException>(() => query.ExecuteAsync(cancellationToken: cancellation.Token));
+        await Assert.ThrowsAsync<OperationCanceledException>(() => query.ExecuteAsync(null, null, cancellation.Token));
     }
 
     [TestMethod]

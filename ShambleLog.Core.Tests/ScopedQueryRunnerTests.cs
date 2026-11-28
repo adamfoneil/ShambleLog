@@ -27,7 +27,7 @@ public sealed class ScopedQueryRunnerTests
         });
         services.AddTransient<LogQuery, ClientSideLogQuery>();
         services.AddTransient<CategorySummaryQuery>();
-        services.AddTransient<EFCoreSummaryQuery>();
+        services.AddTransient<EFCoreMetricsQuery>();
         await using var provider = services.BuildServiceProvider();
         await using var circuit = provider.CreateAsyncScope();
         var runner = new ScopedQueryRunner(circuit.ServiceProvider.GetRequiredService<IServiceScopeFactory>());
@@ -56,10 +56,10 @@ public sealed class ScopedQueryRunnerTests
             await WaitForOverlap();
             return await query.ExecuteAsync();
         });
-        var efCore = runner.ExecuteAsync<EFCoreSummaryQuery, EFCoreSummaryQuery.Result[]>(async query =>
+        var efCore = runner.ExecuteAsync<EFCoreMetricsQuery, EFCoreMetricsQuery.Result[]>(async query =>
         {
             await WaitForOverlap();
-            return await query.ExecuteAsync();
+            return await query.ExecuteAsync(null, null, default);
         });
 
         await ready.Task.WaitAsync(TimeSpan.FromSeconds(5));

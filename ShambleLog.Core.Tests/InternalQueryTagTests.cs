@@ -39,26 +39,26 @@ public sealed class InternalQueryTagTests
 
         await using var scope = provider.CreateAsyncScope();
         var context = scope.ServiceProvider.GetRequiredService<TestDbContext>();
-        var results = await new EFCoreSummaryQuery(context).ExecuteAsync();
+        var results = await new EFCoreMetricsQuery(context).ExecuteAsync(null, null, default);
         Assert.IsEmpty(results);
         AssertTagged(interceptor.TakeSingle(), nameof(EFCoreEntry));
     }
 
     [TestMethod]
-    public async Task EFCoreSummaryQuery_GeneratesTaggedPostgreSql()
+    public async Task EFCoreMetricsQuery_GeneratesTaggedPostgreSql()
     {
         var interceptor = new StopCompilationInterceptor();
         await using var context = new TestDbContext(new DbContextOptionsBuilder<TestDbContext>()
             .UseNpgsql("Host=localhost;Database=unused;Username=unused")
             .AddInterceptors(interceptor).Options);
 
-        await Assert.ThrowsExactlyAsync<QueryCapturedException>(() => new EFCoreSummaryQuery(context).ExecuteAsync());
+        await Assert.ThrowsExactlyAsync<QueryCapturedException>(() => new EFCoreMetricsQuery(context).ExecuteAsync(null, null, default));
         Assert.IsNotNull(interceptor.Query);
         interceptor.Stop = false;
         var sql = ((IQueryable<EFCoreEntry>)context.EFCoreEntries).Provider.CreateQuery(interceptor.Query).ToQueryString();
         StringAssert.Contains(sql, "-- ShambleLog Internal");
         StringAssert.Contains(sql, "FROM \"EFCoreEntries\"");
-        StringAssert.Contains(sql, "JOIN \"LogEntries\"");
+        AssertTagged(interceptor.Query, nameof(LogEntry));
     }
 
     private static void AssertTagged(Expression expression, string entityName)
