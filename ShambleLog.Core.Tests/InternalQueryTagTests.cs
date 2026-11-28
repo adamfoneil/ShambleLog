@@ -61,6 +61,23 @@ public sealed class InternalQueryTagTests
         AssertTagged(interceptor.Query, nameof(LogEntry));
     }
 
+    [TestMethod]
+    public void EFCoreQuery_TranslatesSubstringFiltersToPostgreSql()
+    {
+        using var context = new TestDbContext(new DbContextOptionsBuilder<TestDbContext>()
+            .UseNpgsql("Host=localhost;Database=unused;Username=unused").Options);
+        var criteria = new LogQuery.EFCoreCriteria { Table = "Pro", Tag = "Rep", CommandTextContains = "SELECT" };
+
+        var sql = LogQuery.ApplyEFCoreCriteria(context.EFCoreEntries, criteria).Skip(1).Take(2).ToQueryString();
+        Assert.AreEqual(2, sql.Split("unnest(").Length - 1);
+        Assert.AreEqual(3, sql.Split("lower(").Length - 1);
+        Assert.AreEqual(2, sql.Split("EXISTS (").Length - 1);
+        StringAssert.Contains(sql, "TargetTables");
+        StringAssert.Contains(sql, "Tags");
+        StringAssert.Contains(sql, "CommandText");
+        StringAssert.Contains(sql, "LIMIT");
+    }
+
     private static void AssertTagged(Expression expression, string entityName)
     {
         var roots = new QueryRootVisitor();

@@ -20,6 +20,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <InternalsVisibleTo Include="ShambleLog.Core.Tests" />
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
     <None Include="..\README.md">
       <Pack>True</Pack>

@@ -40,8 +40,11 @@ public abstract class LogQuery(ILoggingDbContext loggingDbContext)
 
     public class EFCoreCriteria
     {
+        /// <summary>Case-insensitive substring filter matching any target table.</summary>
         public string? Table { get; set; }
+        /// <summary>Case-insensitive substring filter matching any tag.</summary>
         public string? Tag { get; set; }
+        /// <summary>Case-insensitive command text substring filter.</summary>
         public string? CommandTextContains { get; set; }
         public int? MinElapsedMs { get; set; }
     }
@@ -156,15 +159,8 @@ public abstract class LogQuery(ILoggingDbContext loggingDbContext)
         if (criteria is not null)
             logs = ApplyCriteria(logs, criteria);
 
-        var commands = efQueryDb.EFCoreEntries.AsNoTracking();
-        if (!string.IsNullOrWhiteSpace(efCoreCriteria.Table))
-            commands = commands.Where(entry => entry.TargetTables.Contains(efCoreCriteria.Table));
-        if (!string.IsNullOrWhiteSpace(efCoreCriteria.Tag))
-            commands = commands.Where(entry => entry.Tags.Contains(efCoreCriteria.Tag));
-        if (!string.IsNullOrWhiteSpace(efCoreCriteria.CommandTextContains))
-            commands = commands.Where(entry => entry.CommandText.Contains(efCoreCriteria.CommandTextContains));
-        if (efCoreCriteria.MinElapsedMs is not null)
-            commands = commands.Where(entry => entry.ElapsedMs >= efCoreCriteria.MinElapsedMs.Value);
+        var inMemory = _loggingDbContext is DbContext { Database.ProviderName: "Microsoft.EntityFrameworkCore.InMemory" };
+        var commands = ApplyEFCoreCriteria(efQueryDb.EFCoreEntries.AsNoTracking(), efCoreCriteria, inMemory);
 
         var joined = from command in commands
                      join log in logs on command.LogEntryId equals log.Id
@@ -180,6 +176,36 @@ public abstract class LogQuery(ILoggingDbContext loggingDbContext)
             return row.Command;
         })];
     }
+
+    internal static IQueryable<EFCoreEntry> ApplyEFCoreCriteria(IQueryable<EFCoreEntry> commands, EFCoreCriteria criteria, bool inMemory = false)
+    {
+        if (!string.IsNullOrWhiteSpace(criteria.Table))
+        {
+            var tableFilter = criteria.Table.ToLower();
+            // InMemory cannot translate predicates over primitive collections, but can evaluate this method in its query.
+            commands = inMemory
+                ? commands.Where(entry => ContainsName(entry.TargetTables, tableFilter))
+                : commands.Where(entry => entry.TargetTables.Any(table => table.ToLower().Contains(tableFilter)));
+        }
+        if (!string.IsNullOrWhiteSpace(criteria.Tag))
+        {
+            var tagFilter = criteria.Tag.ToLower();
+            commands = inMemory
+                ? commands.Where(entry => ContainsName(entry.Tags, tagFilter))
+                : commands.Where(entry => entry.Tags.Any(tag => tag.ToLower().Contains(tagFilter)));
+        }
+        if (!string.IsNullOrWhiteSpace(criteria.CommandTextContains))
+        {
+            var commandFilter = criteria.CommandTextContains.ToLower();
+            commands = commands.Where(entry => entry.CommandText.ToLower().Contains(commandFilter));
+        }
+        if (criteria.MinElapsedMs is not null)
+            commands = commands.Where(entry => entry.ElapsedMs >= criteria.MinElapsedMs.Value);
+        return commands;
+    }
+
+    private static bool ContainsName(string[] names, string filter) =>
+        names.Any(name => name.ToLower().Contains(filter));
 
     internal static IQueryable<LogEntry> ApplyDateFilter(IQueryable<LogEntry> query, DateOnly? date)
     {

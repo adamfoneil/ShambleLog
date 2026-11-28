@@ -252,6 +252,48 @@ public sealed class LogQueryTests
     }
 
     [TestMethod]
+    public async Task EFCoreQuery_MatchesCaseInsensitiveSubstringsBeforePagination()
+    {
+        await using var db = CreateContext();
+        var date = new DateTime(2026, 1, 15, 0, 0, 0, DateTimeKind.Utc);
+        var first = Entry(1, date.AddHours(1), "first");
+        var second = Entry(2, date.AddHours(2), "second");
+        var third = Entry(3, date.AddHours(3), "third");
+        first.EFCoreEntry = new EFCoreEntry { TargetTables = ["Orders", "UserProfiles"], Tags = ["other", "MonthlyReport"], CommandText = "SELECT * FROM UserProfiles" };
+        second.EFCoreEntry = new EFCoreEntry { TargetTables = ["USERPROFILES"], Tags = ["MONTHLYREPORT"], CommandText = "select * from userprofiles" };
+        third.EFCoreEntry = new EFCoreEntry { TargetTables = ["User", "Profiles", "A%_Table"], Tags = ["Monthly", "Report", "A%_Tag"], CommandText = "SELECT * FROM UserProfiles" };
+        db.LogEntries.AddRange(first, second, third);
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+        var query = new LogQuery(db);
+        var criteria = new LogQuery.Criteria { TimeExpression = "asc" };
+
+        foreach (var filter in new[]
+        {
+            new LogQuery.EFCoreCriteria { Table = "rPrO" },
+            new LogQuery.EFCoreCriteria { Tag = "lyRe" },
+            new LogQuery.EFCoreCriteria { CommandTextContains = "FrOm" },
+            new LogQuery.EFCoreCriteria { Table = "rPrO", Tag = "lyRe", CommandTextContains = "FrOm" }
+        })
+        {
+            var expected = filter.Table is null && filter.Tag is null ? new long[] { 1, 2, 3 } : [1, 2];
+            CollectionAssert.AreEqual(expected, (await query.ExecuteAsync(filter, 0, int.MaxValue, criteria)).Select(row => row.LogEntryId).ToArray());
+        }
+
+        var combined = new LogQuery.EFCoreCriteria { Table = "rPrO", Tag = "lyRe", CommandTextContains = "FrOm" };
+        CollectionAssert.AreEqual(new long[] { 2 }, (await query.ExecuteAsync(combined, 1, 1, criteria)).Select(row => row.LogEntryId).ToArray());
+        combined.Table = "missing";
+        Assert.IsEmpty(await query.ExecuteAsync(combined, 0, int.MaxValue));
+        Assert.IsEmpty(await query.ExecuteAsync(new LogQuery.EFCoreCriteria { Tag = "missing" }, 0, int.MaxValue));
+        Assert.IsEmpty(await query.ExecuteAsync(new LogQuery.EFCoreCriteria { CommandTextContains = "missing" }, 0, int.MaxValue));
+        CollectionAssert.AreEqual(new long[] { 3 }, (await query.ExecuteAsync(new LogQuery.EFCoreCriteria { Table = "%_", Tag = "%_" }, 0, int.MaxValue)).Select(row => row.LogEntryId).ToArray());
+        combined.Table = " ";
+        combined.Tag = "";
+        combined.CommandTextContains = null;
+        CollectionAssert.AreEqual(new long[] { 1, 2, 3 }, (await query.ExecuteAsync(combined, 0, int.MaxValue, criteria)).Select(row => row.LogEntryId).ToArray());
+    }
+
+    [TestMethod]
     public void ParseTimeExpression_FiltersRangesAndOrders()
     {
         var now = DateTime.UtcNow;
