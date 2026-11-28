@@ -2,6 +2,7 @@
 @using Microsoft.EntityFrameworkCore
 @using ShambleLog.Core.Entities
 @using ShambleLog.Core.Queries
+@inject ContextMenuService ContextMenuService
 
 @{
     var groups = CategorySummaryProjection.Build(_rules, _summaries);
@@ -69,13 +70,9 @@
             <div class="ms-4 mt-1 d-flex justify-content-between align-items-center gap-2" @key="summary.Category" @onclick="() => CategorySelected.InvokeAsync(summary.Category)">
               <div>
                 <button type="button" class="btn btn-link btn-sm p-0" aria-label="Filter logs by @summary.Category" title="@summary.Category">@projectedSummary.DisplayCategory</button>
-                @foreach (var level in projectedSummary.LiveLevelOptions)
+                @if (projectedSummary.LiveLevelOptions.Length > 0)
                 {
-                    var action = level < rule.Level ? "Increase" : "Decrease";
-                    var buttonTitle = $"{action} to {level}";
-                    var buttonLabel = level == LogLevel.Information ? "Info" : level.ToString();
-                    var ariaLabel = $"{action} {summary.Category} to {level}";
-                    <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="() => SetLevel(summary, level)" @onclick:stopPropagation="true" disabled="@_busy" aria-label="@ariaLabel" title="@buttonTitle">@buttonLabel</button>
+                    <button type="button" class="btn btn-sm p-0 align-middle" @onclick="args => OpenLevelMenu(args, summary, rule.Level, projectedSummary.LiveLevelOptions)" @onclick:stopPropagation="true" disabled="@_busy" aria-label="@($"Adjust detail for {summary.Category}")" title="Adjust detail" aria-haspopup="menu"><RadzenIcon Icon="more_vert" /></button>
                 }
               </div>
               <div class="text-nowrap">
@@ -191,6 +188,16 @@
         await CategoryLevelQuery.SetCategoryLevelAsync(summary.Category, level);
         await RefreshCore();
     });
+
+    private void OpenLevelMenu(MouseEventArgs args, CategorySummaryQuery.Result summary, LogLevel currentLevel, LogLevel[] levels)
+    {
+        ContextMenuService.Open(args, _ => @<RadzenPanelMenu Click="@(async (MenuItemEventArgs item) => { ContextMenuService.Close(); if (item.Value is LogLevel level) await SetLevel(summary, level); })">
+            @foreach (var level in levels)
+            {
+                <RadzenPanelMenuItem Text="@($"{(level < currentLevel ? "More" : "Less")} Detail: {level}")" Value="@level" />
+            }
+        </RadzenPanelMenu>);
+    }
 
     private async Task Run(Func<Task> action)
     {
