@@ -22,8 +22,11 @@ jobs:
       - name: Run tests
         run: dotnet test ./ShambleLog.Core.Tests/ShambleLog.Core.Tests.csproj --configuration Release
 
+      - name: Build ShambleLog.RCL
+        run: dotnet build ./ShambleLog.RCL/ShambleLog.RCL.csproj --configuration Release -p:GeneratePackageOnBuild=false
+
       - name: Pack ShambleLog.RCL
-        run: dotnet pack ./ShambleLog.RCL/ShambleLog.RCL.csproj --configuration Release --output ./artifacts
+        run: dotnet pack ./ShambleLog.RCL/ShambleLog.RCL.csproj --configuration Release --no-build --output ./artifacts
 
       - name: NuGet login
         id: login
