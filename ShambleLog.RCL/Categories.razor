@@ -75,7 +75,7 @@
               <div class="text-nowrap">
                 @foreach (var count in summary.LevelCounts.OrderBy(item => item.Key))
                 {
-                    <span class="badge @CssUtil.GetLogLevelBadgeClass(count.Key)" title="@count.Key">@count.Value</span>
+                    <span class="badge @CssUtil.GetLogLevelBadgeClass(count.Key) me-2" title="@count.Key">@count.Value</span>
                 }
               </div>
             </div>
