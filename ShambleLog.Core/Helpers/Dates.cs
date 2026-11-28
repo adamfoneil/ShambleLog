@@ -4,7 +4,7 @@ public static class Dates
 {
     public static string AgeExpression(this DateTime utcTimestamp) => AgeExpression(utcTimestamp, DateTime.UtcNow);
 
-    public static string AgeExpression(this DateTime from , DateTime to)
+    public static string AgeExpression(this DateTime from, DateTime to)
     {
         var diff = to - from;
         var duration = diff.Duration();
