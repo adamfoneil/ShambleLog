@@ -1,10 +1,8 @@
 ﻿@page "/"
-@using ShambleLog.Core.Queries
 @using ShambleLog.RCL
-@inject LogQuery LogQuery
-@inject CategorySummaryQuery CategorySummaryQuery
-@inject EFCoreSummaryQuery EFCoreSummaryQuery
+@inject CategoryLevelQuery CategoryLevelQuery
+@inject ScopedQueryRunner Queries
 
 <PageTitle>Home</PageTitle>
 
-<LogViewer CategorySummaryQuery="CategorySummaryQuery" EFCoreSummaryQuery="EFCoreSummaryQuery" LogQuery="LogQuery" />
+<LogViewer CategoryLevelQuery="CategoryLevelQuery" Queries="Queries" />

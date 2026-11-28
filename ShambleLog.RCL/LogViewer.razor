@@ -2,13 +2,14 @@
 @using ShambleLog.Core.Entities
 @using ShambleLog.Core.Queries
 @using ShambleLog.RCL.Widgets
+@implements IDisposable
 
 <div class="log-viewer">
     <section class="me-2">
         <RadzenAccordion>
             <Items>
-                <RadzenAccordionItem Text="Categories" Selected="true">
-
+                <RadzenAccordionItem Text="Categories">
+                    <Categories CategoryLevelQuery="CategoryLevelQuery" Queries="Queries" CategorySelected="SelectCategory" />
                 </RadzenAccordionItem>
                 <RadzenAccordionItem Text="EF Core" Visible="_efCoreEnabled">
 
@@ -39,34 +40,71 @@
     private LogQuery.EFCoreCriteria? _efCoreCriteria;
     private string? _filterError;
     private LogEntry[] _logEntries = [];
-    private CategoryLevel[] _categoryLevels = [];
-    private CategorySummaryQuery.Result[] _categorySummaries = [];
     private EFCoreSummaryQuery.Result[] _efCoreSummaries = [];
+    private long _refreshVersion;
+    private CancellationTokenSource? _refreshCancellation;
 
-    [Parameter, EditorRequired] public LogQuery LogQuery { get; set; }
-    [Parameter, EditorRequired] public CategorySummaryQuery CategorySummaryQuery { get; set; }
-    [Parameter, EditorRequired] public EFCoreSummaryQuery EFCoreSummaryQuery { get; set; }
+    [Parameter, EditorRequired] public ScopedQueryRunner Queries { get; set; } = default!;
+    [Parameter, EditorRequired] public CategoryLevelQuery CategoryLevelQuery { get; set; } = default!;
 
     protected override async Task OnInitializedAsync()
     {
         await Refresh();
     }
 
+    private Task SelectCategory(string category)
+    {
+        _criteria.CategoryContains = category;
+        _page = 0;
+        return Refresh();
+    }
+
 
     private async Task Refresh()
     {
-        //_categoryLevels = await 
-        _categorySummaries = await CategorySummaryQuery.ExecuteAsync();
+        var version = ++_refreshVersion;
+        var previous = _refreshCancellation;
+        using var cancellation = new CancellationTokenSource();
+        _refreshCancellation = cancellation;
+        previous?.Cancel();
+        var criteria = new LogQuery.Criteria
+        {
+            Date = _criteria.Date,
+            TimeExpression = _criteria.TimeExpression,
+            CategoryContains = _criteria.CategoryContains,
+            Level = _criteria.Level,
+            TemplateContains = _criteria.TemplateContains,
+            MessageContains = _criteria.MessageContains,
+            PropertiesContain = _criteria.PropertiesContain
+        };
+        var skip = PageSize * _page;
         try
         {
-            _logEntries = await LogQuery.ExecuteAsync(_criteria, PageSize * _page, PageSize);
+            var entries = await Queries.ExecuteAsync<LogQuery, LogEntry[]>(query => query.ExecuteAsync(criteria, skip, PageSize, cancellation.Token));
+            if (version != _refreshVersion)
+                return;
+            _logEntries = entries;
             _filterError = null;
+            var summaries = await Queries.ExecuteAsync<EFCoreSummaryQuery, EFCoreSummaryQuery.Result[]>(query => query.ExecuteAsync(cancellationToken: cancellation.Token));
+            if (version == _refreshVersion)
+                _efCoreSummaries = summaries;
         }
         catch (FormatException ex)
         {
-            _filterError = ex.Message;
-            return;
+            if (version == _refreshVersion)
+                _filterError = ex.Message;
         }
-        _efCoreSummaries = await EFCoreSummaryQuery.ExecuteAsync();
+        catch (OperationCanceledException) when (cancellation.IsCancellationRequested) { }
+        finally
+        {
+            if (ReferenceEquals(_refreshCancellation, cancellation))
+                _refreshCancellation = null;
+        }
+    }
+
+    public void Dispose()
+    {
+        _refreshVersion++;
+        _refreshCancellation?.Cancel();
     }
 }

@@ -223,10 +223,25 @@ public sealed class LoggingIntegrationTests(TestContext testContext)
 
         await using var readScope = host.Services.CreateAsyncScope();
         var rule = await readScope.ServiceProvider.GetRequiredService<LoggingTestDbContext>()
-            .LogCategoryLevels.SingleAsync(testContext.CancellationToken);
+            .LogCategoryLevels.SingleAsync(item => item.Category == "example", testContext.CancellationToken);
         Assert.AreEqual("example", rule.Category);
         Assert.AreEqual(LogLevel.Warning, rule.Level);
         Assert.IsFalse(warnings.Messages.Any(message => message.Contains("takes precedence")));
+    }
+
+    [TestMethod]
+    [Timeout(10000, CooperativeCancellation = true)]
+    public async Task AddShambleLog_NoConfiguredDefault_SeedsOnlyWhenMissing()
+    {
+        using var host = CreateConfiguredHost(new Dictionary<string, string?>(), new CapturingLoggerProvider());
+        await host.StartAsync(testContext.CancellationToken);
+        await host.StopAsync(testContext.CancellationToken);
+        await using var scope = host.Services.CreateAsyncScope();
+        var rule = await scope.ServiceProvider.GetRequiredService<LoggingTestDbContext>()
+            .LogCategoryLevels.SingleAsync(testContext.CancellationToken);
+        Assert.AreEqual("Default", rule.Category);
+        Assert.AreEqual(LogLevel.Information, rule.Level);
+        Assert.IsFalse(rule.IsTemporary);
     }
 
     [TestMethod]
@@ -657,6 +672,12 @@ public sealed class LoggingIntegrationTests(TestContext testContext)
     public async Task StopAsync_DatabaseWriteFails_PropagatesPersistenceFailure()
     {
         using var host = CreateHost(failWrites: true);
+        await using (var scope = host.Services.CreateAsyncScope())
+        {
+            var context = scope.ServiceProvider.GetRequiredService<LoggingTestDbContext>();
+            context.LogCategoryLevels.Add(new CategoryLevel { Category = "Default", Level = LogLevel.Information });
+            await context.SaveRulesAsync(testContext.CancellationToken);
+        }
         await host.StartAsync(testContext.CancellationToken);
         var writer = host.Services.GetRequiredService<LogEntryWriter>();
         var execution = writer.ExecuteTask;
