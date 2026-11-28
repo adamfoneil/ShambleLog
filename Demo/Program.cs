@@ -6,7 +6,6 @@ using ShambleLog.Core;
 using ShambleLog.Core.Middleware;
 using ShambleLog.Core.Queries;
 using ShambleLog.PostgreSQL;
-using ShambleLog.RCL;
 
 var builder = WebApplication.CreateBuilder(args);
 
