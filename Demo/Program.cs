@@ -2,13 +2,10 @@ using Demo;
 using Demo.Components;
 using Microsoft.EntityFrameworkCore;
 using Radzen;
-using ShambleLog.Core;
 using ShambleLog.Core.Middleware;
 using ShambleLog.PostgreSQL;
 
 var builder = WebApplication.CreateBuilder(args);
-
-builder.Logging.AddShambleLog<ApplicationDbContext, PostgreSQLLogQuery>(options => options.TrackEFCoreQueries());
 
 builder.Services.AddRazorComponents().AddInteractiveServerComponents();
 builder.Services.AddRadzenComponents();
@@ -20,6 +17,8 @@ if (string.IsNullOrWhiteSpace(connectionString))
 }
 
 builder.Services.AddDbContextFactory<ApplicationDbContext>(options => options.UseNpgsql(connectionString), ServiceLifetime.Singleton);
+
+builder.Logging.AddShambleLogPostgreSQL<ApplicationDbContext>(options => options.TrackEFCoreQueries());
 
 var app = builder.Build();
 
