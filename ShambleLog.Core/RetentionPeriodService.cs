@@ -57,7 +57,7 @@ public class RetentionPeriodService(
 
     private static async Task<int> PurgeAsync(ILoggingDbContext context, DateTime cutoff, CancellationToken cancellationToken)
     {
-        var entriesToDelete = context.LogEntries.Where(entry => entry.Timestamp < cutoff);
+        var entriesToDelete = context.LogEntries.Where(entry => entry.Timestamp < cutoff).TagAsShambleLogInternal();
         context.LogEntries.RemoveRange(entriesToDelete);
         return await context.SaveChangesAsync(cancellationToken);
     }

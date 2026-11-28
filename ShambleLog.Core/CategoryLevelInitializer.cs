@@ -36,7 +36,7 @@ internal sealed class CategoryLevelInitializer(
         {
             await using var scope = scopeFactory.CreateAsyncScope();
             var context = scope.ServiceProvider.GetRequiredService<ILoggingDbContext>();
-            var existing = await context.LogCategoryLevels.AsNoTracking().ToListAsync(cancellationToken);
+            var existing = await context.LogCategoryLevels.AsNoTracking().TagAsShambleLogInternal().ToListAsync(cancellationToken);
             if (!configured.Any(rule => string.Equals(rule.Category, "Default", StringComparison.OrdinalIgnoreCase))
                 && !existing.Any(rule => string.Equals(rule.Category, "Default", StringComparison.OrdinalIgnoreCase)))
                 configured.Add(new CategoryLevel { Category = "Default", Level = LogLevel.Information });

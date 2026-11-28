@@ -30,7 +30,7 @@ public class EFCoreSummaryQuery(ILoggingDbContext loggingDbContext)
         var joined = from command in _loggingDbContext.EFCoreEntries.AsNoTracking()
                      join log in logs on command.LogEntryId equals log.Id
                      select new { Command = command, Log = log };
-        var rows = await joined.ToArrayAsync(cancellationToken);
+        var rows = await joined.TagAsShambleLogInternal().ToArrayAsync(cancellationToken);
         return [.. BuildMetrics(rows.Select(row =>
         {
             row.Command.LogEntry = row.Log;

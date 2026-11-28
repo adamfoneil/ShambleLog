@@ -76,7 +76,7 @@ internal sealed class CategoryLevelGate(ILoggingDbContext context, SuppressedCat
 {
     public async Task<bool> IsEnabledAsync(LogEntry entry, CancellationToken cancellationToken)
     {
-        var rules = await context.LogCategoryLevels.AsNoTracking().ToListAsync(cancellationToken);
+        var rules = await context.LogCategoryLevels.AsNoTracking().TagAsShambleLogInternal().ToListAsync(cancellationToken);
         var minimumLevel = CategoryLevelResolver.FindEffective(rules, entry.Category)?.Level;
         var isEnabled = minimumLevel is null || (minimumLevel != LogLevel.None && entry.Level >= minimumLevel);
         if (!isEnabled)

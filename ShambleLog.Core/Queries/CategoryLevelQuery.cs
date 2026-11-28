@@ -11,7 +11,8 @@ public class CategoryLevelQuery(IServiceScopeFactory scopeFactory)
     {
         await using var scope = scopeFactory.CreateAsyncScope();
         var context = scope.ServiceProvider.GetRequiredService<ILoggingDbContext>();
-        return await context.LogCategoryLevels.AsNoTracking().OrderBy(item => item.Category).ToArrayAsync(cancellationToken);
+        return await context.LogCategoryLevels.AsNoTracking().OrderBy(item => item.Category)
+            .TagAsShambleLogInternal().ToArrayAsync(cancellationToken);
     }
 
     public async Task SaveAsync(CategoryLevel value, string? originalCategory = null, CancellationToken cancellationToken = default)
@@ -22,7 +23,7 @@ public class CategoryLevelQuery(IServiceScopeFactory scopeFactory)
 
         await using var scope = scopeFactory.CreateAsyncScope();
         var context = scope.ServiceProvider.GetRequiredService<ILoggingDbContext>();
-        var rules = await context.LogCategoryLevels.ToListAsync(cancellationToken);
+        var rules = await context.LogCategoryLevels.TagAsShambleLogInternal().ToListAsync(cancellationToken);
         var original = originalCategory is null ? null : rules.SingleOrDefault(item => item.Category == originalCategory)
             ?? throw new InvalidOperationException("The category level no longer exists. Refresh and try again.");
         if (original is not null && string.Equals(original.Category, "Default", StringComparison.OrdinalIgnoreCase)
@@ -63,7 +64,8 @@ public class CategoryLevelQuery(IServiceScopeFactory scopeFactory)
             throw new InvalidOperationException("The Default category cannot be deleted.");
         await using var scope = scopeFactory.CreateAsyncScope();
         var context = scope.ServiceProvider.GetRequiredService<ILoggingDbContext>();
-        var rule = await context.LogCategoryLevels.SingleOrDefaultAsync(item => item.Category == category, cancellationToken)
+        var rule = await context.LogCategoryLevels.TagAsShambleLogInternal()
+            .SingleOrDefaultAsync(item => item.Category == category, cancellationToken)
             ?? throw new InvalidOperationException("The category level no longer exists. Refresh and try again.");
         context.LogCategoryLevels.Remove(rule);
         await context.SaveChangesAsync(cancellationToken);
