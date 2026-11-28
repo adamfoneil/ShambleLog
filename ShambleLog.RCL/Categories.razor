@@ -54,7 +54,7 @@
         {
             <div class="ms-4 mt-1 d-flex justify-content-between align-items-center gap-2" @key="summary.Category" @onclick="() => CategorySelected.InvokeAsync(summary.Category)">
               <div>
-                <button type="button" class="btn btn-link btn-sm p-0" aria-label="Filter logs by @summary.Category">@summary.Category</button>
+                <button type="button" class="btn btn-link btn-sm p-0" aria-label="Filter logs by @summary.Category" title="@summary.Category">@DisplayCategory(summary.Category, rule)</button>
                 @if (rule.Level == LogLevel.Information)
                 {
                     <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="() => SetLevel(summary, LogLevel.Debug)" @onclick:stopPropagation="true" disabled="@_busy" aria-label="Increase @summary.Category to Debug" title="Increase to Debug">Debug</button>
@@ -106,6 +106,12 @@
     }
 
     private static bool IsDefault(string? category) => string.Equals(category, "Default", StringComparison.OrdinalIgnoreCase);
+
+    private static string DisplayCategory(string category, CategoryLevel rule) =>
+        !IsDefault(rule.Category) && category.Length > rule.Category.Length
+            && category.StartsWith(rule.Category, StringComparison.OrdinalIgnoreCase)
+            ? category[rule.Category.Length..]
+            : category;
 
     private void NewRule()
     {
