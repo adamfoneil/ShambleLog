@@ -9,7 +9,7 @@
         <RadzenAccordion>
             <Items>
                 <RadzenAccordionItem Text="Categories">
-                    <Categories CategoryLevelQuery="CategoryLevelQuery" Queries="Queries" CategorySelected="SelectCategory" />
+                    <Categories CategoryLevelQuery="CategoryLevelQuery" Queries="Queries" CategorySelected="SelectCategory" CategoryLevelSelected="SelectCategoryLevel" />
                 </RadzenAccordionItem>
                 <RadzenAccordionItem Text="EF Core" Visible="_efCoreEnabled">
 
@@ -59,6 +59,11 @@
         return Refresh();
     }
 
+    private Task SelectCategoryLevel((string Category, Microsoft.Extensions.Logging.LogLevel Level) selection)
+    {
+        _criteria.Level = selection.Level;
+        return SelectCategory(selection.Category);
+    }
 
     private async Task Refresh()
     {

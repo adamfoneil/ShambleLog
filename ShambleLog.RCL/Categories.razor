@@ -75,7 +75,9 @@
               <div class="text-nowrap">
                 @foreach (var count in summary.LevelCounts.OrderBy(item => item.Key))
                 {
-                    <span class="badge @CssUtil.GetLogLevelBadgeClass(count.Key) me-2" title="@count.Key">@count.Value</span>
+                    <button type="button" class="btn p-0 border-0" @onclick="() => CategoryLevelSelected.InvokeAsync((summary.Category, count.Key))" @onclick:stopPropagation="true" aria-label="Filter logs by @summary.Category and @count.Key level">
+                        <span class="badge @CssUtil.GetLogLevelBadgeClass(count.Key) me-2" title="@count.Key">@count.Value</span>
+                    </button>
                 }
               </div>
             </div>
@@ -87,6 +89,7 @@
     [Parameter, EditorRequired] public CategoryLevelQuery CategoryLevelQuery { get; set; } = default!;
     [Parameter, EditorRequired] public ScopedQueryRunner Queries { get; set; } = default!;
     [Parameter] public EventCallback<string> CategorySelected { get; set; }
+    [Parameter] public EventCallback<(string Category, LogLevel Level)> CategoryLevelSelected { get; set; }
 
     private CategoryLevel[] _rules = [];
     private CategorySummaryQuery.Result[] _summaries = [];

@@ -89,6 +89,32 @@ public sealed class LogQueryTests
     }
 
     [TestMethod]
+    public async Task CategoryAndLevel_FiltersBothQueryTypesBeforePagination()
+    {
+        await using var db = CreateContext();
+        var date = new DateTime(2026, 1, 15, 0, 0, 0, DateTimeKind.Utc);
+        var match = Entry(1, date, "match");
+        match.Category = "Inventory.Queries";
+        var otherLevel = Entry(2, date.AddMinutes(1), "other level");
+        otherLevel.Category = "Inventory.Queries";
+        otherLevel.Level = LogLevel.Error;
+        var otherCategory = Entry(3, date.AddMinutes(2), "other category");
+        otherCategory.Category = "Other";
+        foreach (var entry in new[] { match, otherLevel, otherCategory })
+            entry.EFCoreEntry = new EFCoreEntry { CommandText = entry.Message };
+        db.LogEntries.AddRange(match, otherLevel, otherCategory);
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        var query = new LogQuery(db);
+        var criteria = new LogQuery.Criteria { CategoryContains = "Inventory.Queries", Level = LogLevel.Warning };
+        Assert.AreEqual(1L, Assert.ContainsSingle(await query.ExecuteAsync(criteria, 0, 1)).Id);
+        Assert.AreEqual(1L, Assert.ContainsSingle(await query.ExecuteAsync(new LogQuery.EFCoreCriteria(), 0, 1, criteria)).LogEntryId);
+        criteria.Level = LogLevel.Error;
+        Assert.AreEqual(2L, Assert.ContainsSingle(await query.ExecuteAsync(criteria, 0, 1)).Id);
+    }
+
+    [TestMethod]
     public async Task ContainsCriteria_ExcludeMatchesBeforePaginationInBothQueryTypes()
     {
         await using var db = CreateContext();
