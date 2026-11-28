@@ -1,5 +1,10 @@
 # Repository instructions
 
+## Core changes
+
+- If a requested change requires modifying `ShambleLog.Core`, stop and warn the user before making that change or implementing work that depends on it. Describe the required Core change and ask the user to make it and publish the updated `ShambleLog.Core` package first.
+- Do not modify Core or publish the package on the user's behalf. Resume dependent work only after the user confirms that the updated package has been published; use the published package rather than relying on an unpublished Core change.
+
 ## Tests and package publishing
 
 - Do not write tests coupled to UI components or their implementation, including rendered HTML, CSS classes, render trees, UI events, or private component state.
