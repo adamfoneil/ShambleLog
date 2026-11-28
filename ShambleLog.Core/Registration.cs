@@ -7,7 +7,7 @@ using ShambleLog.Core.Queries;
 
 namespace ShambleLog.Core;
 
-internal static class Registration
+public static class Registration
 {
     public static ILoggingBuilder Add<TContext, TLogQuery>(
         ILoggingBuilder builder,
