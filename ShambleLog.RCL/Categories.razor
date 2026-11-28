@@ -51,7 +51,7 @@
                 <span>@summary.Category</span>
                 @foreach (var count in summary.LevelCounts.OrderBy(item => item.Key))
                 {
-                    <span class="badge @CssUtil.GetLogLevelBadgeClass(count.Key)" title="@count.Key">@count.Key: @count.Value</span>
+                    <span class="badge @CssUtil.GetLogLevelBadgeClass(count.Key)" title="@count.Key">@count.Value</span>
                 }
                 @if (rule.Level > LogLevel.Trace)
                 {
