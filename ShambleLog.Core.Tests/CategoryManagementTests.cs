@@ -64,8 +64,8 @@ public sealed class CategoryManagementTests
         Assert.IsTrue(html.IndexOf("Default", StringComparison.Ordinal) < html.IndexOf("Other", StringComparison.Ordinal));
         Assert.IsTrue(html.IndexOf("Other", StringComparison.Ordinal) < html.IndexOf("<strong>Inventory</strong>", StringComparison.Ordinal));
         Assert.IsTrue(html.IndexOf("Inventory.Processes", StringComparison.Ordinal) < html.IndexOf("<strong>Inventory.Queries</strong>", StringComparison.Ordinal));
-        StringAssert.Contains(html, "title=\"Inventory.Processes\">.Processes</button>");
-        StringAssert.Contains(html, "title=\"inventory.queries.Read\">.Read</button>");
+        StringAssert.Contains(html, "title=\"Inventory.Processes\">Processes</button>");
+        StringAssert.Contains(html, "title=\"inventory.queries.Read\">Read</button>");
         StringAssert.Contains(html, "title=\"Other\">Other</button>");
         StringAssert.Contains(html, "d-flex justify-content-between align-items-center gap-2");
         Assert.IsTrue(html.IndexOf("title=\"Increase to Information\"", StringComparison.Ordinal) < html.IndexOf("title=\"Warning\">1</span>", StringComparison.Ordinal));
@@ -104,7 +104,7 @@ public sealed class CategoryManagementTests
             return rendered.ToHtmlString();
         });
         StringAssert.Contains(html, "aria-label=\"Filter logs by Inventory\" title=\"Inventory\">Inventory</button>");
-        StringAssert.Contains(html, "aria-label=\"Filter logs by inventory.Queries\" title=\"inventory.Queries\">.Queries</button>");
+        StringAssert.Contains(html, "aria-label=\"Filter logs by inventory.Queries\" title=\"inventory.Queries\">Queries</button>");
         StringAssert.Contains(html, "aria-label=\"Filter logs by InventoryExtra\" title=\"InventoryExtra\">Extra</button>");
         StringAssert.Contains(html, "aria-label=\"Filter logs by Default.Other\" title=\"Default.Other\">Default.Other</button>");
     }

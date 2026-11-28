@@ -14,7 +14,7 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.AspNetCore.Components.Web" Version="11.0.0" />
     <PackageReference Include="Radzen.Blazor" Version="13.4.0" />
-    <PackageReference Include="ShambleLog.Core" Version="0.9.6-alpha" />
+    <ProjectReference Include="..\ShambleLog.Core\ShambleLog.Core.csproj" />
   </ItemGroup>
 
 </Project>
