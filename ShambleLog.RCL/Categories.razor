@@ -44,7 +44,7 @@
         else
         {
             <div class="d-flex justify-content-between align-items-center gap-2">
-                <div>
+                <div class="text-break">
                     <strong>@rule.Category</strong>
                     <span class="badge @CssUtil.GetLogLevelBadgeClass(rule.Level)">@rule.Level</span>
                     @if (rule.IsTemporary)
@@ -52,7 +52,7 @@
                         <span class="badge bg-secondary">Temporary</span>
                     }
                 </div>
-                <div class="d-flex gap-2">
+                <div class="d-flex flex-shrink-0 gap-2">
                     <RadzenButton Icon="edit" ButtonStyle="ButtonStyle.Primary" Size="ButtonSize.Small" Click="@(() => Edit(rule))" Disabled="@_busy" aria-label="@($"Edit {rule.Category}")" title="@($"Edit {rule.Category}")" />
                     @if (!IsDefault(rule.Category))
                     {
