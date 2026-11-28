@@ -64,6 +64,9 @@ public sealed class CategoryManagementTests
         Assert.IsTrue(html.IndexOf("Default", StringComparison.Ordinal) < html.IndexOf("Other", StringComparison.Ordinal));
         Assert.IsTrue(html.IndexOf("Other", StringComparison.Ordinal) < html.IndexOf("<strong>Inventory</strong>", StringComparison.Ordinal));
         Assert.IsTrue(html.IndexOf("Inventory.Processes", StringComparison.Ordinal) < html.IndexOf("<strong>Inventory.Queries</strong>", StringComparison.Ordinal));
+        StringAssert.Contains(html, "title=\"Inventory.Processes\">.Processes</button>");
+        StringAssert.Contains(html, "title=\"inventory.queries.Read\">.Read</button>");
+        StringAssert.Contains(html, "title=\"Other\">Other</button>");
         StringAssert.Contains(html, "d-flex justify-content-between align-items-center gap-2");
         Assert.IsTrue(html.IndexOf("title=\"Increase to Information\"", StringComparison.Ordinal) < html.IndexOf("title=\"Warning\">1</span>", StringComparison.Ordinal));
         StringAssert.Contains(html, "bg-warning text-dark");
@@ -75,11 +78,43 @@ public sealed class CategoryManagementTests
     }
 
     [TestMethod]
-    public async Task Categories_RowSelectionAndLevelButtonsAreSeparate()
+    public async Task Categories_DisplayRelativeNamesWithoutLosingFullCategory()
     {
         await using var services = CreateServices();
         var levels = new CategoryLevelQuery(services.GetRequiredService<IServiceScopeFactory>());
         await levels.SaveAsync(new CategoryLevel { Category = "Default", Level = LogLevel.Information });
+        await levels.SaveAsync(new CategoryLevel { Category = "Inventory", Level = LogLevel.Warning });
+        await using var scope = services.CreateAsyncScope();
+        var context = scope.ServiceProvider.GetRequiredService<TestDbContext>();
+        context.LogEntries.AddRange(
+            new LogEntry { Category = "Inventory", Level = LogLevel.Warning, Message = "exact" },
+            new LogEntry { Category = "inventory.Queries", Level = LogLevel.Warning, Message = "child" },
+            new LogEntry { Category = "InventoryExtra", Level = LogLevel.Warning, Message = "prefix" },
+            new LogEntry { Category = "Default.Other", Level = LogLevel.Warning, Message = "fallback" });
+        await context.SaveChangesAsync();
+        var queries = new ScopedQueryRunner(services.GetRequiredService<IServiceScopeFactory>());
+        await using var renderer = new HtmlRenderer(services, services.GetRequiredService<ILoggerFactory>());
+        var html = await renderer.Dispatcher.InvokeAsync(async () =>
+        {
+            var rendered = await renderer.RenderComponentAsync<Categories>(ParameterView.FromDictionary(new Dictionary<string, object?>
+            {
+                [nameof(Categories.CategoryLevelQuery)] = levels,
+                [nameof(Categories.Queries)] = queries
+            }));
+            return rendered.ToHtmlString();
+        });
+        StringAssert.Contains(html, "aria-label=\"Filter logs by Inventory\" title=\"Inventory\">Inventory</button>");
+        StringAssert.Contains(html, "aria-label=\"Filter logs by inventory.Queries\" title=\"inventory.Queries\">.Queries</button>");
+        StringAssert.Contains(html, "aria-label=\"Filter logs by InventoryExtra\" title=\"InventoryExtra\">Extra</button>");
+        StringAssert.Contains(html, "aria-label=\"Filter logs by Default.Other\" title=\"Default.Other\">Default.Other</button>");
+    }
+
+    [TestMethod]
+    public async Task Categories_RowSelectionAndLevelButtonsAreSeparate()
+    {
+        await using var services = CreateServices();
+        var levels = new CategoryLevelQuery(services.GetRequiredService<IServiceScopeFactory>());
+        await levels.SaveAsync(new CategoryLevel { Category = "Inventory", Level = LogLevel.Information });
         await using var scope = services.CreateAsyncScope();
         var context = scope.ServiceProvider.GetRequiredService<TestDbContext>();
         context.LogEntries.Add(new LogEntry { Category = "Inventory.Queries", Level = LogLevel.Warning, Message = "test" });
