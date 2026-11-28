@@ -11,8 +11,11 @@
                 <RadzenAccordionItem Text="Categories">
                     <Categories CategoryLevelQuery="CategoryLevelQuery" Queries="Queries" Date="_criteria.Date" TimeExpression="@_criteria.TimeExpression" CategorySelected="SelectCategory" CategoryLevelSelected="SelectCategoryLevel" />
                 </RadzenAccordionItem>
-                <RadzenAccordionItem Text="EF Core" Visible="_efCoreEnabled">
-
+                <RadzenAccordionItem Text="EF Core" Visible="EFCoreEnabled">
+                    @if (EFCoreEnabled)
+                    {
+                        <EFCore Queries="Queries" Date="_criteria.Date" TimeExpression="@_criteria.TimeExpression" MetricSelected="SelectEFCoreMetric" />
+                    }
                 </RadzenAccordionItem>
             </Items>
         </RadzenAccordion>
@@ -35,7 +38,6 @@
     private const int PageSize = 50;
     private int _page;
 
-    private bool _efCoreEnabled = false;
     private LogQuery.Criteria _criteria = new();
     private LogQuery.EFCoreCriteria? _efCoreCriteria;
     private string? _filterError;
@@ -46,6 +48,7 @@
 
     [Parameter, EditorRequired] public ScopedQueryRunner Queries { get; set; } = default!;
     [Parameter, EditorRequired] public CategoryLevelQuery CategoryLevelQuery { get; set; } = default!;
+    [Parameter] public bool EFCoreEnabled { get; set; }
 
     protected override async Task OnInitializedAsync()
     {
@@ -63,6 +66,23 @@
     {
         _criteria.Level = selection.Level;
         return SelectCategory(selection.Category);
+    }
+
+    private Task SelectEFCoreMetric(EFCoreMetricsQuery.Result selection)
+    {
+        _efCoreCriteria ??= new();
+        switch (selection.Type)
+        {
+            case EFCoreMetricsQueryType.Tag:
+                _efCoreCriteria.Tag = selection.Name;
+                break;
+            case EFCoreMetricsQueryType.Table:
+                _efCoreCriteria.Table = selection.Name;
+                break;
+            default:
+                throw new ArgumentOutOfRangeException(nameof(selection), selection.Type, "Unknown EF Core metric type.");
+        }
+        return FiltersChanged();
     }
 
     private Task FiltersChanged()

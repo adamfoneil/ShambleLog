@@ -1,0 +1,129 @@
+@using ShambleLog.Core.Queries
+@implements IDisposable
+
+<div class="mb-2">
+    <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="Refresh" disabled="@_busy">Refresh</button>
+</div>
+@if (_error is not null)
+{
+    <div class="text-danger" role="alert">@_error</div>
+}
+@if (_busy)
+{
+    <div role="status">Loading EF Core metrics...</div>
+}
+else if (_error is null && _results.Length == 0)
+{
+    <div>No EF Core metrics for the selected date and time.</div>
+}
+@foreach (var group in _results.GroupBy(result => result.Type).OrderBy(group => group.Key))
+{
+    <div class="table-responsive" @key="group.Key">
+        <table class="table table-sm">
+            <caption class="caption-top">@(group.Key == EFCoreMetricsQueryType.Tag ? "Tags" : "Tables") - elapsed time in milliseconds</caption>
+            <thead>
+                <tr>
+                    <th scope="col">Name</th>
+                    <th scope="col" class="text-end">Count</th>
+                    <th scope="col" class="text-end">Min</th>
+                    <th scope="col" class="text-end">Max</th>
+                    <th scope="col" class="text-end">Avg</th>
+                    <th scope="col" class="text-end">P95</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var result in group)
+                {
+                    <tr @key="result.Name">
+                        <td>
+                            <button type="button" class="btn btn-link btn-sm p-0 text-break" @onclick="() => MetricSelected.InvokeAsync(result)"
+                                    aria-label="Filter logs by EF Core @group.Key @result.Name" title="@result.Name">@result.Name</button>
+                        </td>
+                        <td class="text-end">@result.Count</td>
+                        <td class="text-end">@result.MinElapsedMs</td>
+                        <td class="text-end">@result.MaxElapsedMs</td>
+                        <td class="text-end">@result.AvgElapsedMs.ToString("N2")</td>
+                        <td class="text-end">@result.P95ElapsedMs.ToString("N2")</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}
+
+@code {
+    [Parameter, EditorRequired] public ScopedQueryRunner Queries { get; set; } = default!;
+    [Parameter] public EventCallback<EFCoreMetricsQuery.Result> MetricSelected { get; set; }
+    [Parameter] public DateOnly? Date { get; set; }
+    [Parameter] public string? TimeExpression { get; set; }
+
+    private EFCoreMetricsQuery.Result[] _results = [];
+    private string? _error;
+    private bool _busy;
+    private bool _initialized;
+    private DateOnly? _lastDate;
+    private string? _lastTimeExpression;
+    private long _refreshVersion;
+    private CancellationTokenSource? _refreshCancellation;
+
+    protected override Task OnParametersSetAsync()
+    {
+        if (_initialized && Date == _lastDate && TimeExpression == _lastTimeExpression)
+            return Task.CompletedTask;
+
+        _initialized = true;
+        _lastDate = Date;
+        _lastTimeExpression = TimeExpression;
+        return Refresh();
+    }
+
+    public async Task Refresh()
+    {
+        var version = ++_refreshVersion;
+        var previous = _refreshCancellation;
+        using var cancellation = new CancellationTokenSource();
+        _refreshCancellation = cancellation;
+        previous?.Cancel();
+        var date = Date;
+        var timeExpression = TimeExpression;
+        _busy = true;
+        _error = null;
+        _results = [];
+        try
+        {
+            var results = await Queries.ExecuteAsync<EFCoreMetricsQuery, EFCoreMetricsQuery.Result[]>(
+                query => query.ExecuteAsync(date, timeExpression, cancellation.Token));
+            if (version == _refreshVersion)
+                _results = results;
+        }
+        catch (FormatException ex)
+        {
+            if (version == _refreshVersion)
+                _error = ex.Message;
+        }
+        catch (InvalidOperationException ex)
+        {
+            if (version == _refreshVersion)
+                _error = ex.Message;
+        }
+        catch (NotSupportedException ex)
+        {
+            if (version == _refreshVersion)
+                _error = ex.Message;
+        }
+        catch (OperationCanceledException) when (cancellation.IsCancellationRequested) { }
+        finally
+        {
+            if (version == _refreshVersion)
+                _busy = false;
+            if (ReferenceEquals(_refreshCancellation, cancellation))
+                _refreshCancellation = null;
+        }
+    }
+
+    public void Dispose()
+    {
+        _refreshVersion++;
+        _refreshCancellation?.Cancel();
+    }
+}
