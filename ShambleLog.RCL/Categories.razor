@@ -17,8 +17,10 @@
                 }
             </select>
         </label>
-        <button type="button" class="btn btn-sm btn-primary" @onclick="Save" disabled="@_busy">Save</button>
-        <button type="button" class="btn btn-sm btn-secondary" @onclick="Cancel" disabled="@_busy">Cancel</button>
+        <div class="d-flex flex-shrink-0 gap-2">
+            <RadzenButton Icon="save" ButtonStyle="ButtonStyle.Primary" Size="ButtonSize.Small" Click="@Save" Disabled="@_busy" aria-label="Save category" title="Save category" />
+            <RadzenButton Icon="close" ButtonStyle="ButtonStyle.Secondary" Size="ButtonSize.Small" Click="@Cancel" Disabled="@_busy" aria-label="Cancel editing" title="Cancel editing" />
+        </div>
         @if (_error is not null)
         {
             <div class="text-danger" role="alert">@_error</div>
