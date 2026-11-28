@@ -4,8 +4,7 @@
 @using ShambleLog.Core.Queries
 
 @{
-    var summariesByRule = _summaries.OrderBy(item => item.Category)
-        .ToLookup(item => CategoryLevelResolver.FindEffective(_rules, item.Category));
+    var groups = CategorySummaryProjection.Build(_rules, _summaries);
 }
 
 <div class="d-flex gap-2 mb-2">
@@ -34,8 +33,9 @@
         <button type="button" class="btn btn-sm btn-secondary" @onclick="Cancel" disabled="@_busy">Cancel</button>
     </div>
 }
-@foreach (var rule in _rules)
+@foreach (var group in groups)
 {
+    var rule = group.CategoryLevel;
     <div class="border-bottom py-2" @key="rule.Category">
         <div>
             <strong>@rule.Category</strong>
@@ -50,26 +50,19 @@
                 <button type="button" class="btn btn-sm btn-outline-danger" @onclick="() => Delete(rule)" disabled="@_busy">Delete</button>
             }
         </div>
-        @foreach (var summary in summariesByRule[rule])
+        @foreach (var projectedSummary in group.Summaries)
         {
+            var summary = projectedSummary.Result;
             <div class="ms-4 mt-1 d-flex justify-content-between align-items-center gap-2" @key="summary.Category" @onclick="() => CategorySelected.InvokeAsync(summary.Category)">
               <div>
-                <button type="button" class="btn btn-link btn-sm p-0" aria-label="Filter logs by @summary.Category" title="@summary.Category">@DisplayCategory(summary.Category, rule)</button>
-                @if (rule.Level == LogLevel.Information)
+                <button type="button" class="btn btn-link btn-sm p-0" aria-label="Filter logs by @summary.Category" title="@summary.Category">@projectedSummary.DisplayCategory</button>
+                @foreach (var level in projectedSummary.LiveLevelOptions)
                 {
-                    <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="() => SetLevel(summary, LogLevel.Debug)" @onclick:stopPropagation="true" disabled="@_busy" aria-label="Increase @summary.Category to Debug" title="Increase to Debug">Debug</button>
-                }
-                @if (rule.Level == LogLevel.Warning)
-                {
-                    <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="() => SetLevel(summary, LogLevel.Information)" @onclick:stopPropagation="true" disabled="@_busy" aria-label="Increase @summary.Category to Information" title="Increase to Information">Info</button>
-                }
-                @if (rule.Level == LogLevel.Debug)
-                {
-                    <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="() => SetLevel(summary, LogLevel.Information)" @onclick:stopPropagation="true" disabled="@_busy" aria-label="Decrease @summary.Category to Information" title="Decrease to Information">Info</button>
-                }
-                @if (rule.Level == LogLevel.Information)
-                {
-                    <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="() => SetLevel(summary, LogLevel.Warning)" @onclick:stopPropagation="true" disabled="@_busy" aria-label="Decrease @summary.Category to Warning" title="Decrease to Warning">Warning</button>
+                    var action = level < rule.Level ? "Increase" : "Decrease";
+                    var buttonTitle = $"{action} to {level}";
+                    var buttonLabel = level == LogLevel.Information ? "Info" : level.ToString();
+                    var ariaLabel = $"{action} {summary.Category} to {level}";
+                    <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="() => SetLevel(summary, level)" @onclick:stopPropagation="true" disabled="@_busy" aria-label="@ariaLabel" title="@buttonTitle">@buttonLabel</button>
                 }
               </div>
               <div class="text-nowrap">
@@ -90,6 +83,8 @@
     [Parameter, EditorRequired] public ScopedQueryRunner Queries { get; set; } = default!;
     [Parameter] public EventCallback<string> CategorySelected { get; set; }
     [Parameter] public EventCallback<(string Category, LogLevel Level)> CategoryLevelSelected { get; set; }
+    [Parameter] public DateOnly? Date { get; set; }
+    [Parameter] public string? TimeExpression { get; set; }
 
     private CategoryLevel[] _rules = [];
     private CategorySummaryQuery.Result[] _summaries = [];
@@ -97,24 +92,46 @@
     private string? _originalCategory;
     private string? _error;
     private bool _busy;
+    private bool _refreshPending;
+    private bool _initialized;
+    private DateOnly? _lastDate;
+    private string? _lastTimeExpression;
 
-    protected override Task OnInitializedAsync() => Refresh();
+    protected override Task OnParametersSetAsync()
+    {
+        if (_initialized && Date == _lastDate && TimeExpression == _lastTimeExpression)
+            return Task.CompletedTask;
 
-    public Task Refresh() => Run(RefreshCore);
+        _initialized = true;
+        _lastDate = Date;
+        _lastTimeExpression = TimeExpression;
+        return Refresh();
+    }
+
+    public Task Refresh()
+    {
+        if (_busy)
+        {
+            _refreshPending = true;
+            return Task.CompletedTask;
+        }
+        return Run(RefreshCore);
+    }
 
     private async Task RefreshCore()
     {
-        _rules = await CategoryLevelQuery.ExecuteAsync();
-        _summaries = await Queries.ExecuteAsync<CategorySummaryQuery, CategorySummaryQuery.Result[]>(query => query.ExecuteAsync());
+        var date = Date;
+        var timeExpression = TimeExpression;
+        var rules = await CategoryLevelQuery.ExecuteAsync();
+        var summaries = await Queries.ExecuteAsync<CategorySummaryQuery, CategorySummaryQuery.Result[]>(query => query.ExecuteAsync(date, timeExpression));
+        if (date == Date && timeExpression == TimeExpression)
+        {
+            _rules = rules;
+            _summaries = summaries;
+        }
     }
 
     private static bool IsDefault(string? category) => string.Equals(category, "Default", StringComparison.OrdinalIgnoreCase);
-
-    private static string DisplayCategory(string category, CategoryLevel rule) =>
-        !IsDefault(rule.Category) && category.Length > rule.Category.Length
-            && category.StartsWith(rule.Category, StringComparison.OrdinalIgnoreCase)
-            ? category[rule.Category.Length..].TrimStart('.')
-            : category;
 
     private void NewRule()
     {
@@ -162,8 +179,17 @@
         {
             await action();
         }
+        catch (FormatException ex) { _error = ex.Message; }
         catch (InvalidOperationException ex) { _error = ex.Message; }
         catch (DbUpdateException) { _error = "Unable to save the category level. Refresh and try again."; }
-        finally { _busy = false; }
+        finally
+        {
+            _busy = false;
+            if (_refreshPending)
+            {
+                _refreshPending = false;
+                await Refresh();
+            }
+        }
     }
 }
