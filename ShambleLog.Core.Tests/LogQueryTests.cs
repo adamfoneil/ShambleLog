@@ -42,6 +42,23 @@ public sealed class LogQueryTests
     }
 
     [TestMethod]
+    public async Task LogQuery_DateIsOptional()
+    {
+        await using var db = CreateContext();
+        var date = new DateTime(2026, 1, 15, 0, 0, 0, DateTimeKind.Utc);
+        db.LogEntries.AddRange(Entry(1, date, "first"), Entry(2, date.AddDays(1), "second"));
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        var query = new LogQuery(db);
+        var criteria = new LogQuery.Criteria();
+        CollectionAssert.AreEqual(new long[] { 2, 1 }, (await query.ExecuteAsync(criteria, 0, int.MaxValue)).Select(row => row.Id).ToArray());
+
+        criteria.Date = DateOnly.FromDateTime(date);
+        CollectionAssert.AreEqual(new long[] { 1 }, (await query.ExecuteAsync(criteria, 0, int.MaxValue)).Select(row => row.Id).ToArray());
+    }
+
+    [TestMethod]
     public async Task CategoryContains_FiltersBothQueryTypesBeforePagination()
     {
         await using var db = CreateContext();

@@ -14,7 +14,8 @@ public abstract class LogQuery(ILoggingDbContext loggingDbContext)
 
     public class Criteria
     {
-        public DateOnly Date { get; set; } = DateOnly.FromDateTime(DateTime.UtcNow);
+        /// <summary>Optional date filter; null includes entries from all dates.</summary>
+        public DateOnly? Date { get; set; }
         /// <summary>
         /// Time expression e.g. "30m" (last 30 min) or "1:2h" (between 1 and 2 hours ago).
         /// nnnn:nnnn defines an exact range (e.g. 0930:1330 for 9:30am to 1:30pm), and nnnn alone defines a range from nnnn to now (e.g. 0930 for 9:30am to now).
@@ -182,12 +183,15 @@ public abstract class LogQuery(ILoggingDbContext loggingDbContext)
 
     private static IQueryable<LogEntry> ApplyCriteria(IQueryable<LogEntry> query, Criteria criteria)
     {
-        var start = criteria.Date.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
-        query = query.Where(entry => entry.Timestamp >= start);
-        if (criteria.Date != DateOnly.MaxValue)
+        if (criteria.Date is { } date)
         {
-            var end = start.AddDays(1);
-            query = query.Where(entry => entry.Timestamp < end);
+            var start = date.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
+            query = query.Where(entry => entry.Timestamp >= start);
+            if (date != DateOnly.MaxValue)
+            {
+                var end = start.AddDays(1);
+                query = query.Where(entry => entry.Timestamp < end);
+            }
         }
         if (!string.IsNullOrWhiteSpace(criteria.CategoryContains))
         {
