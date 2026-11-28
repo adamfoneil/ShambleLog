@@ -1,0 +1,14 @@
+.filter-bar {
+    display: grid;
+    grid-template-columns: 160px repeat(5, minmax(0, 1fr));
+    align-items: center;
+    gap: 0.5rem;
+    flex: 1;
+    min-width: 0;
+}
+
+.filter-bar ::deep > * {
+    box-sizing: border-box;
+    width: 100%;
+    min-width: 0;
+}
