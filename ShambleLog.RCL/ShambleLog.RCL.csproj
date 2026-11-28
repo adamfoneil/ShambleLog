@@ -7,7 +7,7 @@
     <GeneratePackageOnBuild>True</GeneratePackageOnBuild>
     <PackageId>ShambleLog.RCL</PackageId>
     <Title>ShambleLog Razor Class Library</Title>
-    <Version>1.0.0</Version>
+    <Version>1.0.2</Version>
     <Company>Adam O'Neil</Company>
     <Copyright>Copyright (c) 2026 Adam O'Neil</Copyright>
     <PackageProjectUrl>https://github.com/adamfoneil/ShambleLog</PackageProjectUrl>
