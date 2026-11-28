@@ -187,6 +187,8 @@ Select a live category row to set the viewer's category-contains filter and retu
 
 The `EFCoreCriteria` overload requires `IEFCoreLoggingDbContext`; it returns command rows with their log entries and supports exact table and tag matches, command text substring, and minimum elapsed milliseconds. Pass optional `Criteria` to filter their log entries as well.
 
+The FilterBar's rightmost **EF Core +** button expands a second row for these four command filters and switches the viewer to the `EFCoreCriteria` overload, retaining the normal log filters. With the row expanded and all command filters empty, only EF Core command logs are shown. **EF Core -** clears the command criteria, collapses the row, and restores the normal log query. Changing either set of filters returns to the first page. The standalone `FilterBar` supports two-way binding with `@bind-Criteria` and nullable `@bind-EFCoreCriteria`; a non-null EF Core criteria object expands the row. Contexts without `IEFCoreLoggingDbContext` display an error when EF Core filters are enabled.
+
 ## Demo database
 
 Demo uses PostgreSQL with `ConnectionStrings:Local` in `Demo\appsettings.json`. Runtime registration provides a singleton `IDbContextFactory<ApplicationDbContext>`; dispose contexts created by the factory after use. The design-time factory reads the `appsettings.json` copied alongside the Demo assembly and requires the same connection-string key. It does not load environment-specific settings or environment-variable overrides.

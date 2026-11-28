@@ -8,12 +8,33 @@
     <RadzenDropDown @bind-Value="Criteria.Level" Change="NotifyCriteriaChanged" Data="Enum.GetValues<LogLevel>()" TValue="LogLevel?" Placeholder="level" AllowClear="true" />    
     <RadzenTextBox @bind-Value="Criteria.MessageContains" Change="NotifyCriteriaChanged" Placeholder="message contains" />
     <RadzenTextBox @bind-Value="Criteria.PropertiesContain" Change="NotifyCriteriaChanged" Placeholder="properties: UserId:123" />
+    <button type="button" class="btn btn-outline-secondary" @onclick="ToggleEFCoreCriteria"
+            aria-expanded="@(EFCoreCriteria is not null)" title="@(EFCoreCriteria is null ? "Enable EF Core filters" : "Clear and collapse EF Core filters")">
+        EF Core @(EFCoreCriteria is null ? "+" : "-")
+    </button>
+    @if (EFCoreCriteria is { } efCoreCriteria)
+    {
+        <div class="efcore-filters">
+            <RadzenTextBox @bind-Value="efCoreCriteria.Table" Change="NotifyEFCoreCriteriaChanged" Placeholder="table" aria-label="EF Core table" />
+            <RadzenTextBox @bind-Value="efCoreCriteria.Tag" Change="NotifyEFCoreCriteriaChanged" Placeholder="tag" aria-label="EF Core tag" />
+            <RadzenTextBox @bind-Value="efCoreCriteria.CommandTextContains" Change="NotifyEFCoreCriteriaChanged" Placeholder="command text contains" aria-label="EF Core command text contains" />
+            <RadzenNumeric @bind-Value="efCoreCriteria.MinElapsedMs" TValue="int?" Change="NotifyEFCoreCriteriaChanged" Min="0" Placeholder="minimum elapsed (ms)" aria-label="EF Core minimum elapsed milliseconds" />
+        </div>
+    }
 </div>
 
 @code {
     [Parameter] public LogQuery.Criteria Criteria { get; set; } = new();
     [Parameter] public EventCallback<LogQuery.Criteria> CriteriaChanged { get; set; }
     [Parameter] public LogQuery.EFCoreCriteria? EFCoreCriteria { get; set; }
+    [Parameter] public EventCallback<LogQuery.EFCoreCriteria?> EFCoreCriteriaChanged { get; set; }
 
     private Task NotifyCriteriaChanged() => CriteriaChanged.InvokeAsync(Criteria);
+    private Task NotifyEFCoreCriteriaChanged() => EFCoreCriteriaChanged.InvokeAsync(EFCoreCriteria);
+
+    private Task ToggleEFCoreCriteria()
+    {
+        EFCoreCriteria = EFCoreCriteria is null ? new() : null;
+        return NotifyEFCoreCriteriaChanged();
+    }
 }

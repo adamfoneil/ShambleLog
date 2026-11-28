@@ -19,8 +19,8 @@
     </section>
 
     <section class="ms-2">
-        <div class="d-flex align-items-center justify-content-between">
-            <FilterBar @bind-Criteria="_criteria" @bind-Criteria:after="Refresh" EFCoreCriteria="_efCoreCriteria" />
+        <div class="d-flex align-items-start justify-content-between">
+            <FilterBar @bind-Criteria="_criteria" @bind-Criteria:after="FiltersChanged" @bind-EFCoreCriteria="_efCoreCriteria" @bind-EFCoreCriteria:after="FiltersChanged" />
             <Pager @bind-Value="_page" Change="Refresh" />
         </div>
         @if (_filterError is not null)
@@ -65,6 +65,12 @@
         return SelectCategory(selection.Category);
     }
 
+    private Task FiltersChanged()
+    {
+        _page = 0;
+        return Refresh();
+    }
+
     private async Task Refresh()
     {
         var version = ++_refreshVersion;
@@ -82,10 +88,28 @@
             MessageContains = _criteria.MessageContains,
             PropertiesContain = _criteria.PropertiesContain
         };
+        var efCoreCriteria = _efCoreCriteria is { } efCriteria ? new LogQuery.EFCoreCriteria
+        {
+            Table = efCriteria.Table,
+            Tag = efCriteria.Tag,
+            CommandTextContains = efCriteria.CommandTextContains,
+            MinElapsedMs = efCriteria.MinElapsedMs
+        } : null;
         var skip = PageSize * _page;
         try
         {
-            var entries = await Queries.ExecuteAsync<LogQuery, LogEntry[]>(query => query.ExecuteAsync(criteria, skip, PageSize, cancellation.Token));
+            var entries = await Queries.ExecuteAsync<LogQuery, LogEntry[]>(async query =>
+            {
+                if (efCoreCriteria is null)
+                    return await query.ExecuteAsync(criteria, skip, PageSize, cancellation.Token);
+
+                var commands = await query.ExecuteAsync(efCoreCriteria, skip, PageSize, criteria, cancellation.Token);
+                return commands.Select(command =>
+                {
+                    command.LogEntry.EFCoreEntry = command;
+                    return command.LogEntry;
+                }).ToArray();
+            });
             if (version != _refreshVersion)
                 return;
             _logEntries = entries;
@@ -93,6 +117,11 @@
             _filterError = null;
         }
         catch (FormatException ex)
+        {
+            if (version == _refreshVersion)
+                _filterError = ex.Message;
+        }
+        catch (NotSupportedException ex) when (efCoreCriteria is not null)
         {
             if (version == _refreshVersion)
                 _filterError = ex.Message;
