@@ -1,9 +1,11 @@
 @using ShambleLog.Core.Entities
+@using ShambleLog.Core.Helpers
 @using Microsoft.Extensions.Logging
 @using System.Text.Json
 
 @{
     var hasEFCoreEntries = Data.Any(entry => entry.EFCoreEntry is not null);
+    var now = DateTime.UtcNow;
 }
 <div class="log-grid-container">
     <div class="log-grid" style="@GridColumns(hasEFCoreEntries)">
@@ -36,7 +38,14 @@
                         @(isExpanded ? "▼" : "▶")
                     </button>
                 </div>
-                <div class="log-cell font-monospace" @onclick="() => ToggleExpand(entry.Id)">@entry.Timestamp.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss.fff")</div>
+                <div class="log-cell font-monospace" @onclick="() => ToggleExpand(entry.Id)">
+                    @if (!HasDateFilter)
+                    {
+                        <span class="me-2">@entry.Timestamp.ToLocalTime().ToString("ddd M/d/yy")</span>
+                    }
+                    @entry.Timestamp.ToLocalTime().ToString("t")
+                    <div class="text-muted">@entry.Timestamp.AgeExpression(now)</div>
+                </div>
                 <div class="log-cell" title="@entry.Category" @onclick="() => ToggleExpand(entry.Id)">
                     @entry.Category
                     @if (entry.EFCoreEntry is { } efCategory)
@@ -129,6 +138,7 @@
 
 @code {
     [Parameter] public LogEntry[] Data { get; set; } = [];
+    [Parameter] public bool HasDateFilter { get; set; }
 
     private readonly HashSet<long> _expandedRows = [];
     private readonly List<string> _pinnedProperties = [];

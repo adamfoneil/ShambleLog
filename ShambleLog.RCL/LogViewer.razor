@@ -27,7 +27,7 @@
         {
             <div class="text-danger" role="alert">@_filterError</div>
         }
-        <LogEntries Data="_logEntries" />
+        <LogEntries Data="_logEntries" HasDateFilter="_appliedDate.HasValue" />
     </section>
 </div>
 
@@ -40,6 +40,7 @@
     private LogQuery.EFCoreCriteria? _efCoreCriteria;
     private string? _filterError;
     private LogEntry[] _logEntries = [];
+    private DateOnly? _appliedDate;
     private EFCoreSummaryQuery.Result[] _efCoreSummaries = [];
     private long _refreshVersion;
     private CancellationTokenSource? _refreshCancellation;
@@ -89,6 +90,7 @@
             if (version != _refreshVersion)
                 return;
             _logEntries = entries;
+            _appliedDate = criteria.Date;
             _filterError = null;
             var summaries = await Queries.ExecuteAsync<EFCoreSummaryQuery, EFCoreSummaryQuery.Result[]>(query => query.ExecuteAsync(cancellationToken: cancellation.Token));
             if (version == _refreshVersion)
