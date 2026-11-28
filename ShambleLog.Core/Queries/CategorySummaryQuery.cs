@@ -13,11 +13,11 @@ public class CategorySummaryQuery(ILoggingDbContext loggingDbContext)
         public Dictionary<LogLevel, int> LevelCounts { get; set; } = [];
     }
 
-    public async Task<Result[]> ExecuteAsync(string? timeExpression = null, CancellationToken cancellationToken = default)
+    public async Task<Result[]> ExecuteAsync(DateOnly? date = null, string? timeExpression = null, CancellationToken cancellationToken = default)
     {
-        var query = _loggingDbContext.LogEntries.AsNoTracking();
+        var query = LogQuery.ApplyDateFilter(_loggingDbContext.LogEntries.AsNoTracking(), date);
         if (timeExpression is not null)
-            query = LogQuery.ParseTimeExpression(query, timeExpression);
+            query = LogQuery.ParseTimeExpression(query, timeExpression, date);
 
         var counts = await query
             .GroupBy(entry => new { entry.Category, entry.Level })

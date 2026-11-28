@@ -173,7 +173,7 @@ EF Core logs commands at `Information`, so the category must pass your logging f
 
 `TimeExpression` is combined with the selected UTC date. Use an integer with `s`, `m`, `h`, or `d` for a time relative to now (for example `30m`), or a range from nearer to farther in the past (for example `1:2h`). Alternatively, use four-digit UTC clock times: `0930:1330` selects the inclusive interval from 09:30 to 13:30 on the selected date, and `0930` selects from 09:30 on that date up to now. Clock ranges cannot cross midnight. Results are newest first by default; append `:asc`, or use `asc` alone, for oldest first. Invalid expressions throw `FormatException`.
 
-In `ShambleLog.Core`, `CategorySummaryQuery.ExecuteAsync` returns each category's counts by log level. Its optional time expression uses the same syntax, with clock times anchored to the current UTC date; without one, the summary includes all timestamps. `EFCoreSummaryQuery` uses the same time-expression behavior.
+In `ShambleLog.Core`, `CategorySummaryQuery.ExecuteAsync` returns each category's counts by log level. Its optional UTC date and time expression use the same filtering as `LogQuery`; without a date, clock times use the current UTC date, and without either filter the summary includes all timestamps. Pass a time expression by name, for example `ExecuteAsync(timeExpression: "30m")`. `EFCoreSummaryQuery` accepts a time expression with clock times anchored to the current UTC date.
 
 ### Managing categories
 

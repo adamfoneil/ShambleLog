@@ -65,7 +65,7 @@ public abstract class LogQuery(ILoggingDbContext loggingDbContext)
     public static IQueryable<LogEntry> ParseTimeExpression(IQueryable<LogEntry> query, string timeExpression) =>
         ParseTimeExpression(query, timeExpression, null);
 
-    private static IQueryable<LogEntry> ParseTimeExpression(IQueryable<LogEntry> query, string timeExpression, DateOnly? date)
+    internal static IQueryable<LogEntry> ParseTimeExpression(IQueryable<LogEntry> query, string timeExpression, DateOnly? date)
     {
         ArgumentNullException.ThrowIfNull(query);
         ArgumentNullException.ThrowIfNull(timeExpression);
@@ -181,18 +181,24 @@ public abstract class LogQuery(ILoggingDbContext loggingDbContext)
         })];
     }
 
-    private static IQueryable<LogEntry> ApplyCriteria(IQueryable<LogEntry> query, Criteria criteria)
+    internal static IQueryable<LogEntry> ApplyDateFilter(IQueryable<LogEntry> query, DateOnly? date)
     {
-        if (criteria.Date is { } date)
+        if (date is { } selectedDate)
         {
-            var start = date.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
+            var start = selectedDate.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
             query = query.Where(entry => entry.Timestamp >= start);
-            if (date != DateOnly.MaxValue)
+            if (selectedDate != DateOnly.MaxValue)
             {
                 var end = start.AddDays(1);
                 query = query.Where(entry => entry.Timestamp < end);
             }
         }
+        return query;
+    }
+
+    private static IQueryable<LogEntry> ApplyCriteria(IQueryable<LogEntry> query, Criteria criteria)
+    {
+        query = ApplyDateFilter(query, criteria.Date);
         if (!string.IsNullOrWhiteSpace(criteria.CategoryContains))
         {
             var (value, exclude) = ParseContains(criteria.CategoryContains);

@@ -302,7 +302,7 @@ public sealed class LogQueryTests
         await db.SaveChangesAsync();
         db.ChangeTracker.Clear();
 
-        var category = Assert.ContainsSingle(await new CategorySummaryQuery(db).ExecuteAsync("0000:2359"));
+        var category = Assert.ContainsSingle(await new CategorySummaryQuery(db).ExecuteAsync(timeExpression: "0000:2359"));
         Assert.AreEqual(1, category.LevelCounts[LogLevel.Warning]);
         var commands = Assert.ContainsSingle(await new EFCoreSummaryQuery(db).ExecuteAsync("0000:2359"));
         Assert.AreEqual(1, commands.TotalCalls);
@@ -352,23 +352,49 @@ public sealed class LogQueryTests
         Assert.AreEqual(2, all["Example"].LevelCounts.Count);
         Assert.AreEqual(1, all["Other"].LevelCounts[LogLevel.Warning]);
         Assert.AreEqual(1, all["Future"].LevelCounts[LogLevel.Information]);
-        Assert.AreEqual(3, (await query.ExecuteAsync("asc")).Length);
+        Assert.AreEqual(3, (await query.ExecuteAsync(timeExpression: "asc")).Length);
 
-        var recent = (await query.ExecuteAsync("30m")).ToDictionary(result => result.Category);
+        var recent = (await query.ExecuteAsync(timeExpression: "30m")).ToDictionary(result => result.Category);
         Assert.AreEqual(2, recent.Count);
         Assert.AreEqual(1, recent["Example"].LevelCounts[LogLevel.Warning]);
         Assert.AreEqual(1, recent["Example"].LevelCounts[LogLevel.Error]);
         Assert.AreEqual(1, recent["Other"].LevelCounts[LogLevel.Warning]);
 
-        var range = Assert.ContainsSingle(await query.ExecuteAsync("1:2h:asc"));
+        var range = Assert.ContainsSingle(await query.ExecuteAsync(timeExpression: "1:2h:asc"));
         Assert.AreEqual("Example", range.Category);
         Assert.AreEqual(1, range.LevelCounts[LogLevel.Warning]);
         Assert.AreEqual(1, range.LevelCounts.Count);
-        await Assert.ThrowsExactlyAsync<FormatException>(() => query.ExecuteAsync("2:1h"));
+        await Assert.ThrowsExactlyAsync<FormatException>(() => query.ExecuteAsync(timeExpression: "2:1h"));
 
         using var cancellation = new CancellationTokenSource();
         cancellation.Cancel();
         await Assert.ThrowsAsync<OperationCanceledException>(() => query.ExecuteAsync(cancellationToken: cancellation.Token));
+    }
+
+    [TestMethod]
+    public async Task CategorySummaryQuery_FiltersUtcDateAndAnchorsClockExpressions()
+    {
+        await using var db = CreateContext();
+        var day = new DateTime(2020, 1, 15, 0, 0, 0, DateTimeKind.Utc);
+        db.LogEntries.AddRange(
+            Entry(1, day.AddTicks(-1), "previous"),
+            Entry(2, day, "midnight"),
+            Entry(3, day.AddHours(9).AddMinutes(30), "start"),
+            Entry(4, day.AddHours(13).AddMinutes(30), "end"),
+            Entry(5, day.AddHours(13).AddMinutes(30).AddTicks(1), "after"),
+            Entry(6, day.AddDays(1), "next"),
+            Entry(7, DateTime.SpecifyKind(DateTime.MaxValue, DateTimeKind.Utc), "maximum"));
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        var query = new CategorySummaryQuery(db);
+        var date = DateOnly.FromDateTime(day);
+        Assert.AreEqual(7, Assert.ContainsSingle(await query.ExecuteAsync()).LevelCounts[LogLevel.Warning]);
+        Assert.AreEqual(4, Assert.ContainsSingle(await query.ExecuteAsync(date)).LevelCounts[LogLevel.Warning]);
+        Assert.AreEqual(2, Assert.ContainsSingle(await query.ExecuteAsync(date, "0930:1330")).LevelCounts[LogLevel.Warning]);
+        Assert.AreEqual(3, Assert.ContainsSingle(await query.ExecuteAsync(date, "0930")).LevelCounts[LogLevel.Warning]);
+        Assert.IsEmpty(await query.ExecuteAsync(date, "30m"));
+        Assert.AreEqual(1, Assert.ContainsSingle(await query.ExecuteAsync(DateOnly.MaxValue)).LevelCounts[LogLevel.Warning]);
     }
 
     [TestMethod]
