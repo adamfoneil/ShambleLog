@@ -5,24 +5,12 @@
 
 @{
     var groups = CategorySummaryProjection.Build(_rules, _summaries);
-}
-
-<div class="d-flex gap-2 mb-2">
-    <button type="button" class="btn btn-sm btn-primary" @onclick="NewRule" disabled="@_busy">Add category</button>
-    <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="Refresh" disabled="@_busy">Refresh</button>
-</div>
-@if (_error is not null)
-{
-    <div class="text-danger" role="alert">@_error</div>
-}
-@if (_editing is not null)
-{
-    <div class="mb-2">
+    RenderFragment editor = @<div class="d-flex flex-wrap align-items-end gap-2">
         <label>Category
-            <input class="form-control form-control-sm" @bind="_editing.Category" disabled="@IsDefault(_originalCategory)" />
+            <input class="form-control form-control-sm" @bind="_editing!.Category" disabled="@(IsDefault(_originalCategory) || _busy)" />
         </label>
         <label>Level
-            <select class="form-select form-select-sm" @bind="_editing.Level">
+            <select class="form-select form-select-sm" @bind="_editing!.Level" disabled="@_busy">
                 @foreach (var level in Enum.GetValues<LogLevel>())
                 {
                     <option value="@level">@level</option>
@@ -31,25 +19,48 @@
         </label>
         <button type="button" class="btn btn-sm btn-primary" @onclick="Save" disabled="@_busy">Save</button>
         <button type="button" class="btn btn-sm btn-secondary" @onclick="Cancel" disabled="@_busy">Cancel</button>
-    </div>
+        @if (_error is not null)
+        {
+            <div class="text-danger" role="alert">@_error</div>
+        }
+    </div>;
+}
+
+<div class="d-flex gap-2 mb-2">
+    <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="Refresh" disabled="@_busy">Refresh</button>
+</div>
+@if (_error is not null && _editing is null)
+{
+    <div class="text-danger" role="alert">@_error</div>
 }
 @foreach (var group in groups)
 {
     var rule = group.CategoryLevel;
     <div class="border-bottom py-2" @key="rule.Category">
-        <div>
-            <strong>@rule.Category</strong>
-            <span class="badge @CssUtil.GetLogLevelBadgeClass(rule.Level)">@rule.Level</span>
-            @if (rule.IsTemporary)
-            {
-                <span class="badge bg-secondary">Temporary</span>
-            }
-            <button type="button" class="btn btn-sm btn-outline-primary" @onclick="() => Edit(rule)" disabled="@_busy">Edit</button>
-            @if (!IsDefault(rule.Category))
-            {
-                <button type="button" class="btn btn-sm btn-outline-danger" @onclick="() => Delete(rule)" disabled="@_busy">Delete</button>
-            }
-        </div>
+        @if (_editing is not null && _originalCategory == rule.Category)
+        {
+            @editor
+        }
+        else
+        {
+            <div class="d-flex justify-content-between align-items-center gap-2">
+                <div class="text-break">
+                    <strong>@rule.Category</strong>
+                    <span class="badge @CssUtil.GetLogLevelBadgeClass(rule.Level)">@rule.Level</span>
+                    @if (rule.IsTemporary)
+                    {
+                        <span class="badge bg-secondary">Temporary</span>
+                    }
+                </div>
+                <div class="d-flex flex-shrink-0 gap-2">
+                    <RadzenButton Icon="edit" ButtonStyle="ButtonStyle.Primary" Size="ButtonSize.Small" Click="@(() => Edit(rule))" Disabled="@_busy" aria-label="@($"Edit {rule.Category}")" title="@($"Edit {rule.Category}")" />
+                    @if (!IsDefault(rule.Category))
+                    {
+                        <RadzenButton Icon="delete" ButtonStyle="ButtonStyle.Danger" Size="ButtonSize.Small" Click="@(() => Delete(rule))" Disabled="@_busy" aria-label="@($"Delete {rule.Category}")" title="@($"Delete {rule.Category}")" />
+                    }
+                </div>
+            </div>
+        }
         @foreach (var projectedSummary in group.Summaries)
         {
             var summary = projectedSummary.Result;
@@ -77,6 +88,16 @@
         }
     </div>
 }
+<div class="py-2">
+    @if (_editing is not null && (_originalCategory is null || !groups.Any(group => group.CategoryLevel.Category == _originalCategory)))
+    {
+        @editor
+    }
+    else
+    {
+        <button type="button" class="btn btn-sm btn-primary" @onclick="NewRule" disabled="@_busy">Add category</button>
+    }
+</div>
 
 @code {
     [Parameter, EditorRequired] public CategoryLevelQuery CategoryLevelQuery { get; set; } = default!;
