@@ -1,7 +1,7 @@
 ﻿using Microsoft.EntityFrameworkCore;
 using ShambleLog.Core.Entities;
 using ShambleLog.Core.Middleware;
-using ShambleLog.PostgreSQL.Configurations;
+using ShambleLog.PostgreSQL;
 
 namespace Demo;
 
@@ -15,9 +15,7 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
-        modelBuilder.ApplyConfiguration(new LogEntryConfiguration());
-        modelBuilder.ApplyConfiguration(new CategoryLevelConfiguration());
-        modelBuilder.ApplyConfiguration(new EFCoreEntryConfiguration());
+        modelBuilder.ConfigureShambleLog();
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(ApplicationDbContext).Assembly);
     }
 }
