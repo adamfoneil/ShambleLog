@@ -71,12 +71,12 @@
                             <div class="text-muted font-monospace">@efMessage.Parameters</div>
                         }
                         <pre class="efcore-sql">@efMessage.CommandText</pre>
-                        <CopyButton Value="@efMessage.CommandText" />
+                        <CopyButton Value="@efMessage.CommandText" class="ms-2" />
                     }
                     else
                     {
                         @entry.Message
-                        <CopyButton Value="@entry.Message" />
+                        <CopyButton Value="@entry.Message" class="ms-2" />
                     }
                 </div>
                 @if (hasEFCoreEntries)
@@ -98,7 +98,7 @@
                         {
                             <div>
                                 <strong>Exception</strong>
-                                <CopyButton Value="@entry.Exception" />
+                                <CopyButton Value="@entry.Exception" class="ms-2" />
                                 <pre class="exception">@entry.Exception</pre>
                             </div>
                         }
