@@ -34,7 +34,7 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.AspNetCore.Components.Web" Version="11.0.0" />
     <PackageReference Include="Radzen.Blazor" Version="13.4.0" />
-    <PackageReference Include="ShambleLog.Core" Version="1.0.0" />
+    <PackageReference Include="ShambleLog.Core" Version="1.0.1" />
   </ItemGroup>
 
 </Project>
