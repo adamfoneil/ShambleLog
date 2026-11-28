@@ -72,7 +72,7 @@
                 <button type="button" class="btn btn-link btn-sm p-0" aria-label="Filter logs by @summary.Category" title="@summary.Category">@projectedSummary.DisplayCategory</button>
                 @if (projectedSummary.LiveLevelOptions.Length > 0)
                 {
-                    <button type="button" class="btn btn-sm p-0 align-middle" @onclick="args => OpenLevelMenu(args, summary, rule.Level, projectedSummary.LiveLevelOptions)" @onclick:stopPropagation="true" disabled="@_busy" aria-label="@($"Adjust detail for {summary.Category}")" title="Adjust detail" aria-haspopup="menu"><RadzenIcon Icon="more_vert" /></button>
+                    <button type="button" class="detail-menu-button" @onclick="args => OpenLevelMenu(args, summary, rule.Level, projectedSummary.LiveLevelOptions)" @onclick:stopPropagation="true" disabled="@_busy" aria-label="@($"Adjust detail for {summary.Category}")" title="Adjust detail" aria-haspopup="menu"><svg aria-hidden="true" width="12" height="12" viewBox="0 0 12 12" fill="currentColor"><circle cx="2" cy="6" r="1" /><circle cx="6" cy="6" r="1" /><circle cx="10" cy="6" r="1" /></svg></button>
                 }
               </div>
               <div class="text-nowrap">

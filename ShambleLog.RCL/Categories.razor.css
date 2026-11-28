@@ -14,3 +14,30 @@ a:hover,
 .btn-link:hover {
     background-color: rgba(0, 0, 0, 0.06);
 }
+
+.detail-menu-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    padding: 0;
+    vertical-align: middle;
+    color: #57606a;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 4px;
+}
+
+.detail-menu-button:hover:not(:disabled) {
+    background-color: rgba(0, 0, 0, 0.06);
+}
+
+.detail-menu-button:focus-visible {
+    outline: 2px solid #0969da;
+    outline-offset: 1px;
+}
+
+.detail-menu-button:disabled {
+    opacity: 0.5;
+}
